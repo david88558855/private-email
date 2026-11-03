@@ -29,6 +29,9 @@ type Config struct {
 	} `yaml:"pop3"`
 	SMTPClient struct {
 		Smarthost string `yaml:"smarthost"` // host:port，留空直连 MX（决策 D3）
+		Username  string `yaml:"username"`  // relay 凭据（可空）
+		Password  string `yaml:"password"`  // relay 凭据（可空）
+		From      string `yaml:"from"`      // relay 信封发件人（可空）
 	} `yaml:"smtp_client"`
 	TLS struct {
 		CertFile string `yaml:"cert_file"` // 留空自签（决策 D4）

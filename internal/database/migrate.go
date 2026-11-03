@@ -109,7 +109,8 @@ CREATE TABLE mail_queue (
 	status TEXT NOT NULL DEFAULT 'queued', -- queued|sent|failed
 	attempts INTEGER NOT NULL DEFAULT 0,
 	next_try_at DATETIME,
-	last_error TEXT
+	last_error TEXT,
+	created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE TABLE invites (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,

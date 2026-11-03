@@ -33,6 +33,8 @@ func New(db *sql.DB, cfg *config.Config, st *store.Store) *gin.Engine {
 	authed.GET("/mails/:id/raw", mail.Raw)
 	authed.PATCH("/mails/:id", mail.Patch)
 	authed.DELETE("/mails/:id", mail.Delete)
+	authed.POST("/mailboxes/:id/compose", mail.Compose)
+	authed.GET("/queue", mail.Queue)
 
 	// 内嵌前端：SPA 回退到 index.html
 	dist, _ := fs.Sub(web.Dist, "dist")
