@@ -3,6 +3,7 @@ package pop3
 
 import (
 	"bufio"
+	"crypto/tls"
 
 	"encoding/binary"
 	"fmt"
@@ -16,22 +17,35 @@ import (
 )
 
 // Serve 启动 POP3 明文（110）；TLS 995 于 M6 挂证书后启用。
-func Serve(st *store.Store, cfg *config.Config) {
+func Serve(st *store.Store, cfg *config.Config, cert *tls.Certificate) {
 	ln, err := net.Listen("tcp", cfg.POP3.Listen)
 	if err != nil {
 		log.Printf("POP3 监听 %s 失败（跳过）: %v", cfg.POP3.Listen, err)
 		return
 	}
 	log.Printf("POP3 服务就绪 %s", cfg.POP3.Listen)
-	go func() {
-		for {
-			conn, err := ln.Accept()
+	go accept(ln, st)
+	if cfg.POP3.TLS != "" && cert != nil {
+		go func() {
+			tln, err := tls.Listen("tcp", cfg.POP3.TLS, &tls.Config{Certificates: []tls.Certificate{*cert}})
 			if err != nil {
+				log.Printf("POP3S 监听失败（跳过）: %v", err)
 				return
 			}
-			go handle(conn, st)
+			log.Printf("POP3S 服务就绪 %s", cfg.POP3.TLS)
+			accept(tln, st)
+		}()
+	}
+}
+
+func accept(ln net.Listener, st *store.Store) {
+	for {
+		conn, err := ln.Accept()
+		if err != nil {
+			return
 		}
-	}()
+		go handle(conn, st)
+	}
 }
 
 type sess struct {

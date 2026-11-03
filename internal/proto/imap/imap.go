@@ -5,6 +5,7 @@ import (
 	"bufio"
 	"bytes"
 	"crypto/rand"
+	"crypto/tls"
 	"encoding/binary"
 	"fmt"
 	"log"
@@ -23,7 +24,9 @@ import (
 )
 
 type Backend struct {
-	Store *store.Store
+	Store  *store.Store
+	Config *config.Config
+	Cert   *tls.Certificate
 }
 
 func (b *Backend) Login(_ *imapbackend.ConnInfo, username, password string) (backend.User, error) {
@@ -362,6 +365,9 @@ func (m *Mailbox) Expunge() error {
 func Serve(b *Backend, cfg *config.Config) {
 	s := imapserver.New(b)
 	s.AllowInsecureAuth = true
+	if b.Cert != nil {
+		s.TLSConfig = &tls.Config{Certificates: []tls.Certificate{*b.Cert}}
+	}
 	go func() {
 		log.Printf("IMAP 服务就绪 %s", cfg.IMAP.Listen)
 		ln, err := net.Listen("tcp", cfg.IMAP.Listen)
@@ -373,4 +379,15 @@ func Serve(b *Backend, cfg *config.Config) {
 			log.Printf("IMAP 退出: %v", err)
 		}
 	}()
+	if cfg.IMAP.TLS != "" && b.Cert != nil {
+		go func() {
+			ln, err := tls.Listen("tcp", cfg.IMAP.TLS, s.TLSConfig)
+			if err != nil {
+				log.Printf("IMAPS 监听失败（跳过）: %v", err)
+				return
+			}
+			log.Printf("IMAPS 服务就绪 %s", cfg.IMAP.TLS)
+			s.Serve(ln)
+		}()
+	}
 }

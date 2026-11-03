@@ -22,6 +22,7 @@ import (
 type Backend struct {
 	Store  *store.Store
 	Config *config.Config
+	Cert   *tls.Certificate
 }
 
 type session struct {
@@ -151,13 +152,30 @@ func Serve(be *Backend) {
 	s.Domain = "private-email"
 	s.MaxMessageBytes = be.Config.SMTP.MaxSize * 1024 * 1024
 	s.AllowInsecureAuth = true
+	if be.Cert != nil {
+		s.TLSConfig = &tls.Config{Certificates: []tls.Certificate{*be.Cert}}
+	}
 	s.ReadTimeout = 2 * time.Minute
 	s.WriteTimeout = 2 * time.Minute
 
-	go listen(s, be.Config.SMTP.Listen, "SMTP", nil)
+	go listen(s, be.Config.SMTP.Listen, "SMTP", s.TLSConfig)
 	if be.Config.SMTP.Submission != "" {
-		go listen(s, be.Config.SMTP.Submission, "Submission", nil)
+		go listen(s, be.Config.SMTP.Submission, "Submission", s.TLSConfig)
 	}
+	if be.Config.SMTP.TLS != "" && be.Cert != nil {
+		go listenImplicit(s, be.Config.SMTP.TLS, "SMTPS", s.TLSConfig)
+	}
+}
+
+func listenImplicit(s *smtp.Server, addr, name string, tlsCfg *tls.Config) {
+	ln, err := tls.Listen("tcp", addr, tlsCfg)
+	if err != nil {
+		log.Printf("%s 监听 %s 失败（跳过）: %v", name, addr, err)
+		return
+	}
+	log.Printf("%s 服务就绪 %s", name, addr)
+	defer func() { recover() }()
+	s.Serve(ln)
 }
 
 func listen(s *smtp.Server, addr, name string, cert *tls.Config) {

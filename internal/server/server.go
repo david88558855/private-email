@@ -21,7 +21,7 @@ func New(db *sql.DB, cfg *config.Config, st *store.Store) *gin.Engine {
 
 	auth := &handlers.AuthHandler{DB: db, Config: cfg}
 	api := r.Group("/api/v1")
-	api.POST("/auth/login", auth.Login)
+	api.POST("/auth/login", middleware.LoginRateLimit(cfg.Security.LoginRate), auth.Login)
 	authed := api.Group("", middleware.Auth(cfg.Security.JWTSecret))
 	authed.GET("/me", auth.Me)
 

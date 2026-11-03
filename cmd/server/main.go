@@ -17,6 +17,7 @@ import (
 	"github.com/david88558855/private-email/internal/proto/smtp"
 	"github.com/david88558855/private-email/internal/server"
 	"github.com/david88558855/private-email/internal/store"
+	"github.com/david88558855/private-email/internal/tlsutil"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -70,13 +71,16 @@ func main() {
 	st := &store.Store{DB: db}
 	st.Bootstrap()
 
+	// TLS（M6：D4 自签或自有证书）
+	cert := tlsutil.Load(filepath.Join(dataDir, "certs"), cfg.TLS.CertFile, cfg.TLS.KeyFile)
+
 	// SMTP 入站（M2）
-	smtpBackend := &smtp.Backend{Store: st, Config: cfg}
+	smtpBackend := &smtp.Backend{Store: st, Config: cfg, Cert: cert}
 	smtp.Serve(smtpBackend)
 
 	// IMAP / POP3（M3）
-	imap.Serve(&imap.Backend{Store: st}, cfg)
-	pop3.Serve(st, cfg)
+	imap.Serve(&imap.Backend{Store: st, Config: cfg, Cert: cert}, cfg)
+	pop3.Serve(st, cfg, cert)
 
 	// SMTP 出站（M4）
 	outbound.EnsureDKIMKeys(st)
