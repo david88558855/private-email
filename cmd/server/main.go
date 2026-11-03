@@ -11,7 +11,9 @@ import (
 
 	"github.com/david88558855/private-email/internal/config"
 	"github.com/david88558855/private-email/internal/database"
+	"github.com/david88558855/private-email/internal/proto/smtp"
 	"github.com/david88558855/private-email/internal/server"
+	"github.com/david88558855/private-email/internal/store"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -62,7 +64,14 @@ func main() {
 	}
 	bootstrapAdmin(db)
 
-	r := server.New(db, cfg)
+	st := &store.Store{DB: db}
+	st.Bootstrap()
+
+	// SMTP 入站（M2）
+	smtpBackend := &smtp.Backend{Store: st, Config: cfg}
+	smtp.Serve(smtpBackend)
+
+	r := server.New(db, cfg, st)
 	log.Printf("Private Email %s · HTTP %s 就绪", version, cfg.HTTP.Listen)
 	if err := r.Run(cfg.HTTP.Listen); err != nil {
 		log.Fatal(err)

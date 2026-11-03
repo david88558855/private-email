@@ -9,11 +9,12 @@ import (
 	"github.com/david88558855/private-email/internal/config"
 	"github.com/david88558855/private-email/internal/server/handlers"
 	"github.com/david88558855/private-email/internal/server/middleware"
+	"github.com/david88558855/private-email/internal/store"
 	"github.com/david88558855/private-email/internal/web"
 	"github.com/gin-gonic/gin"
 )
 
-func New(db *sql.DB, cfg *config.Config) *gin.Engine {
+func New(db *sql.DB, cfg *config.Config, st *store.Store) *gin.Engine {
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.New()
 	r.Use(gin.Recovery())
@@ -23,6 +24,15 @@ func New(db *sql.DB, cfg *config.Config) *gin.Engine {
 	api.POST("/auth/login", auth.Login)
 	authed := api.Group("", middleware.Auth(cfg.Security.JWTSecret))
 	authed.GET("/me", auth.Me)
+
+	mail := &handlers.MailHandler{Store: st}
+	authed.GET("/mailboxes", mail.Mailboxes)
+	authed.GET("/mailboxes/:id/folders", mail.Folders)
+	authed.GET("/folders/:id/mails", mail.List)
+	authed.GET("/mails/:id", mail.Get)
+	authed.GET("/mails/:id/raw", mail.Raw)
+	authed.PATCH("/mails/:id", mail.Patch)
+	authed.DELETE("/mails/:id", mail.Delete)
 
 	// 内嵌前端：SPA 回退到 index.html
 	dist, _ := fs.Sub(web.Dist, "dist")
