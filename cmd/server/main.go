@@ -11,6 +11,8 @@ import (
 
 	"github.com/david88558855/private-email/internal/config"
 	"github.com/david88558855/private-email/internal/database"
+	"github.com/david88558855/private-email/internal/proto/imap"
+	"github.com/david88558855/private-email/internal/proto/pop3"
 	"github.com/david88558855/private-email/internal/proto/smtp"
 	"github.com/david88558855/private-email/internal/server"
 	"github.com/david88558855/private-email/internal/store"
@@ -70,6 +72,10 @@ func main() {
 	// SMTP 入站（M2）
 	smtpBackend := &smtp.Backend{Store: st, Config: cfg}
 	smtp.Serve(smtpBackend)
+
+	// IMAP / POP3（M3）
+	imap.Serve(&imap.Backend{Store: st}, cfg)
+	pop3.Serve(st, cfg)
 
 	r := server.New(db, cfg, st)
 	log.Printf("Private Email %s · HTTP %s 就绪", version, cfg.HTTP.Listen)

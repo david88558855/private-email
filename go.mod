@@ -4,6 +4,7 @@ go 1.27.3
 
 require (
 	blitiri.com.ar/go/spf v1.6.0
+	github.com/emersion/go-imap v1.2.1
 	github.com/emersion/go-message v0.18.2
 	github.com/emersion/go-msgauth v0.7.0
 	github.com/emersion/go-smtp v0.25.0
