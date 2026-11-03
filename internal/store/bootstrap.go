@@ -1,6 +1,10 @@
 package store
 
-import "log"
+import (
+	"log"
+
+	"github.com/david88558855/private-email/internal/mailutil"
+)
 
 // Bootstrap 首启种子：默认域名 + 管理员邮箱（密码复用 Web 密码，D2）。
 func (s *Store) Bootstrap() {
@@ -45,5 +49,32 @@ func (s *Store) Bootstrap() {
 		s.DB.QueryRow(`SELECT id FROM mailboxes WHERE address=?`, addr).Scan(&mbID)
 		s.EnsureFolders(mbID)
 		log.Printf("已创建邮箱 %s（客户端密码与 Web 登录一致）", addr)
+	}
+}
+
+// RebuildFTSBody 迁移 002 后为旧邮件补 body_text（触发器自动同步 FTS）。
+func (s *Store) RebuildFTSBody() {
+	rows, err := s.DB.Query(`SELECT id, raw_blob FROM mails WHERE body_text='' AND length(raw_blob) > 0`)
+	if err != nil {
+		return
+	}
+	type item struct {
+		id  int64
+		raw []byte
+	}
+	var need []item
+	for rows.Next() {
+		var it item
+		if rows.Scan(&it.id, &it.raw) == nil {
+			need = append(need, it)
+		}
+	}
+	rows.Close()
+	for _, it := range need {
+		p := mailutil.Parse(it.raw)
+		s.DB.Exec(`UPDATE mails SET body_text=? WHERE id=?`, p.TextBody, it.id)
+	}
+	if len(need) > 0 {
+		log.Printf("已重建 %d 封旧邮件的全文索引", len(need))
 	}
 }

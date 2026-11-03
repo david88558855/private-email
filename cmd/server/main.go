@@ -70,6 +70,7 @@ func main() {
 
 	st := &store.Store{DB: db}
 	st.Bootstrap()
+	st.RebuildFTSBody()
 
 	// TLS（M6：D4 自签或自有证书）
 	cert := tlsutil.Load(filepath.Join(dataDir, "certs"), cfg.TLS.CertFile, cfg.TLS.KeyFile)

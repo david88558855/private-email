@@ -287,6 +287,9 @@ func (m *Mailbox) CreateMessage(flags []string, _ time.Time, body imapbackend.Li
 	if err != nil {
 		return err
 	}
+	if int64(len(raw)) > m.u.be.Config.SMTP.MaxSize*1024*1024 {
+		return fmt.Errorf("message too large")
+	}
 	p := store.ParseFull(&store.MailFull{Raw: raw})
 	folderID := m.id
 	_, _, err = m.u.be.Store.InsertMail(folderID, p.From, "", p.Subject, raw,
