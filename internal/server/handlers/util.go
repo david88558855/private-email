@@ -6,6 +6,7 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/pem"
+	"regexp"
 
 	"github.com/david88558855/private-email/internal/store"
 )
@@ -47,3 +48,7 @@ func dnsTXTFor(pemKey string) string {
 	}
 	return base64.StdEncoding.EncodeToString(pub)
 }
+
+var usernameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{1,31}$`)
+
+func validUsername(s string) bool { return usernameRe.MatchString(s) }

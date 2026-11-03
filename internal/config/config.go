@@ -32,6 +32,8 @@ type Config struct {
 		Username  string `yaml:"username"`  // relay 凭据（可空）
 		Password  string `yaml:"password"`  // relay 凭据（可空）
 		From      string `yaml:"from"`      // relay 信封发件人（可空）
+		// TLS 连 relay 时跳过证书校验（自签 relay 场景）
+		InsecureSkipVerify bool `yaml:"insecure_skip_verify"`
 	} `yaml:"smtp_client"`
 	TLS struct {
 		CertFile string `yaml:"cert_file"` // 留空自签（决策 D4）

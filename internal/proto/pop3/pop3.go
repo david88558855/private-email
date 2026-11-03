@@ -173,8 +173,7 @@ func handle(conn net.Conn, st *store.Store) {
 				break
 			}
 			write("+OK")
-			raw := s.mails[i-1].raw
-			w.Write([]byte(strings.ReplaceAll(string(raw), "\r\n.", "\r\n..") + "\r\n"))
+			w.Write(dotStuff(s.mails[i-1].raw))
 			write(".")
 			s.st.MarkSeen(s.mails[i-1].id)
 		case "TOP":
@@ -256,3 +255,21 @@ func (s *sess) stats() (int, int) {
 }
 
 var _ = binary.BigEndian.Uint32
+
+// dotStuff RFC 1939 字节填充：行首 '.' 翻倍（含首行）。
+func dotStuff(raw []byte) []byte {
+	out := make([]byte, 0, len(raw)+16)
+	if len(raw) > 0 && raw[0] == '.' {
+		out = append(out, '.', '.')
+	}
+	for i := 0; i < len(raw); i++ {
+		out = append(out, raw[i])
+		if raw[i] == '\n' && i+1 < len(raw) && raw[i+1] == '.' {
+			out = append(out, '.')
+			i++
+			out = append(out, '.')
+		}
+	}
+	out = append(out, '\r', '\n')
+	return out
+}

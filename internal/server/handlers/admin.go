@@ -99,6 +99,10 @@ func (h *MailHandler) UserAdd(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误（用户名 2-32 位，密码至少 6 位）"})
 		return
 	}
+	if !validUsername(req.Username) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "用户名仅限小写字母/数字/-/_，2-32 位"})
+		return
+	}
 	if req.Role != "admin" {
 		req.Role = "user"
 	}
@@ -237,6 +241,10 @@ func (h *MailHandler) Register(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误（用户名 2-32 位，密码至少 6 位）"})
 		return
 	}
+	if !validUsername(req.Username) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "用户名仅限小写字母/数字/-/_，2-32 位"})
+		return
+	}
 	var id int64
 	err := h.Store.DB.QueryRow(`SELECT id FROM invites WHERE code=? AND used_by IS NULL`, req.Invite).Scan(&id)
 	if err != nil {
@@ -249,9 +257,17 @@ func (h *MailHandler) Register(c *gin.Context) {
 		c.JSON(http.StatusConflict, gin.H{"error": "用户名已存在"})
 		return
 	}
-	h.Store.DB.Exec(`UPDATE invites SET used_by=(SELECT id FROM users WHERE username=?) WHERE id=?`,
-		req.Username, id)
 	uid, _ := res.LastInsertId()
+	res2, err := h.Store.DB.Exec(`UPDATE invites SET used_by=? WHERE id=? AND used_by IS NULL`, uid, id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "服务异常"})
+		return
+	}
+	if n, _ := res2.RowsAffected(); n == 0 {
+		h.Store.DB.Exec(`DELETE FROM users WHERE id=?`, uid)
+		c.JSON(http.StatusForbidden, gin.H{"error": "邀请码无效或已使用"})
+		return
+	}
 	var domainID int64
 	var domain string
 	h.Store.DB.QueryRow(`SELECT id, domain FROM domains ORDER BY id LIMIT 1`).Scan(&domainID, &domain)

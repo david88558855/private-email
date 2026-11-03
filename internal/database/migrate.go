@@ -165,3 +165,27 @@ func Migrate(db *sql.DB) error {
 	}
 	return nil
 }
+
+var _ = []string{} // migrations 追加见下方 init 拼接
+
+func init() {
+	migrations = append(migrations, []string{
+		// 002 FTS 同步触发器 + body_text 列（修复硬删后索引孤儿行）
+		`
+ALTER TABLE mails ADD COLUMN body_text TEXT NOT NULL DEFAULT '';
+DROP TABLE IF EXISTS mails_fts;
+CREATE VIRTUAL TABLE mails_fts USING fts5(subject, sender, body_text, content='mails', content_rowid='id');
+CREATE TRIGGER mails_fts_ai AFTER INSERT ON mails BEGIN
+	INSERT INTO mails_fts(rowid, subject, sender, body_text) VALUES(new.id, new.subject, new.sender, new.body_text);
+END;
+CREATE TRIGGER mails_fts_ad AFTER DELETE ON mails BEGIN
+	INSERT INTO mails_fts(mails_fts, rowid, subject, sender, body_text) VALUES('delete', old.id, old.subject, old.sender, old.body_text);
+END;
+CREATE TRIGGER mails_fts_au AFTER UPDATE ON mails BEGIN
+	INSERT INTO mails_fts(mails_fts, rowid, subject, sender, body_text) VALUES('delete', old.id, old.subject, old.sender, old.body_text);
+	INSERT INTO mails_fts(rowid, subject, sender, body_text) VALUES(new.id, new.subject, new.sender, new.body_text);
+END;
+INSERT INTO mails_fts(mails_fts) VALUES('rebuild');
+`,
+	}...)
+}

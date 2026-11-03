@@ -26,9 +26,19 @@ func Auth(secret string) gin.HandlerFunc {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 			return
 		}
-		claims := tok.Claims.(jwt.MapClaims)
-		c.Set("user_id", int64(claims["uid"].(float64)))
-		c.Set("role", claims["role"].(string))
+		claims, ok := tok.Claims.(jwt.MapClaims)
+		if !ok {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+			return
+		}
+		uidF, ok := claims["uid"].(float64)
+		role, ok2 := claims["role"].(string)
+		if !ok || !ok2 {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+			return
+		}
+		c.Set("user_id", int64(uidF))
+		c.Set("role", role)
 		c.Next()
 	}
 }

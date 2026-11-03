@@ -10,7 +10,7 @@ import (
 // Open 打开 SQLite 单库（全量数据：元数据 + 邮件 BLOB，决策 D1=B）。
 // WAL 提升并发读，busy_timeout 规避写锁竞争。
 func Open(path string) (*sql.DB, error) {
-	dsn := fmt.Sprintf("file:%s?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=foreign_keys(ON)&_pragma=synchronous(NORMAL)", path)
+	dsn := fmt.Sprintf("file:%s?_pragma=journal_mode(WAL)&_pragma=busy_timeout(15000)&_pragma=foreign_keys(ON)&_pragma=synchronous(NORMAL)", path)
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, err

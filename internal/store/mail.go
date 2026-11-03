@@ -53,17 +53,13 @@ func (s *Store) InsertMail(folderID int64, sender, recipient, subject string,
 	if err := tx.QueryRow(`SELECT uid_next FROM folders WHERE id=?`, folderID).Scan(&uidNext); err != nil {
 		return 0, 0, err
 	}
-	res, err := tx.Exec(`INSERT INTO mails(folder_id, msg_uid, sender, recipient, subject, flags, size, raw_blob, code, spam_score)
-		VALUES(?,?,?,?,?,?,?,?,?,?)`,
-		folderID, uidNext, sender, recipient, subject, flags, len(raw), raw, code, spamScore)
+	res, err := tx.Exec(`INSERT INTO mails(folder_id, msg_uid, sender, recipient, subject, flags, size, raw_blob, code, spam_score, body_text)
+		VALUES(?,?,?,?,?,?,?,?,?,?,?)`,
+		folderID, uidNext, sender, recipient, subject, flags, len(raw), raw, code, spamScore, textBody)
 	if err != nil {
 		return 0, 0, err
 	}
 	mailID, _ := res.LastInsertId()
-	if _, err := tx.Exec(`INSERT INTO mails_fts(rowid, subject, sender, body_text) VALUES(?,?,?,?)`,
-		mailID, subject, sender, textBody); err != nil {
-		return 0, 0, err
-	}
 	if _, err := tx.Exec(`UPDATE folders SET uid_next=uid_next+1 WHERE id=?`, folderID); err != nil {
 		return 0, 0, err
 	}
@@ -121,7 +117,8 @@ func (s *Store) ListMails(folderID int64, q string, limit, offset int) ([]MailSu
 func ftsQuery(q string) string {
 	words := strings.Fields(q)
 	for i, w := range words {
-		words[i] = `"` + strings.ReplaceAll(w, `"`, ``) + `"`
+		// 前缀匹配：兼容 unicode61 分词下 CJK 连续串（"中文" 命中 "中文主题"）
+		words[i] = `"` + strings.ReplaceAll(w, `"`, ``) + `"*`
 	}
 	return strings.Join(words, " ")
 }

@@ -5,6 +5,7 @@ import (
 	"crypto"
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/tls"
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
@@ -65,7 +66,7 @@ func (w *Worker) deliver(id int64, from, to string, raw []byte, attempts int) {
 	signed := w.dkimSign(from, raw)
 	var err error
 	if w.Cfg.SMTPClient.Smarthost != "" {
-		err = smtp.SendMail(w.Cfg.SMTPClient.Smarthost, nil, from, []string{to}, signed)
+		err = w.viaSmarthost(from, []string{to}, signed)
 	} else {
 		err = w.viaMX(from, to, signed)
 	}
@@ -87,16 +88,20 @@ func (w *Worker) deliver(id int64, from, to string, raw []byte, attempts int) {
 }
 
 func (w *Worker) viaMX(from, to string, raw []byte) error {
-	domain := to[strings.Index(to, "@")+1:]
+	return w.sendDirect(from, []string{to}, raw)
+}
+
+func (w *Worker) sendDirect(from string, tos []string, raw []byte) error {
+	domain := tos[0][strings.Index(tos[0], "@")+1:]
 	mxs, err := net.LookupMX(domain)
 	if err != nil || len(mxs) == 0 {
 		// 无 MX 记录时按 RFC 5321 回落 A 记录
-		return smtp.SendMail(domain+":25", nil, from, []string{to}, raw)
+		return smtp.SendMail(domain+":25", nil, from, tos, raw)
 	}
 	var last error
 	for _, mx := range mxs {
 		host := strings.TrimSuffix(mx.Host, ".") + ":25"
-		if err := smtp.SendMail(host, nil, from, []string{to}, raw); err != nil {
+		if err := smtp.SendMail(host, nil, from, tos, raw); err != nil {
 			last = err
 			continue
 		}
@@ -176,4 +181,56 @@ func parseDKIMKey(data []byte) (crypto.Signer, error) {
 		return v, nil
 	}
 	return nil, fmt.Errorf("unsupported key type")
+}
+
+// viaSmarthost 经 relay 投递：465 隐式 TLS，其余 STARTTLS；支持认证与跳过校验。
+func (w *Worker) viaSmarthost(from string, tos []string, raw []byte) error {
+	addr := w.Cfg.SMTPClient.Smarthost
+	host, _, _ := net.SplitHostPort(addr)
+	implicit := strings.HasSuffix(addr, ":465")
+	conn, err := net.Dial("tcp", addr)
+	if err != nil {
+		return err
+	}
+	tlsCfg := &tls.Config{ServerName: host, InsecureSkipVerify: w.Cfg.SMTPClient.InsecureSkipVerify}
+	if implicit {
+		conn = tls.Client(conn, tlsCfg)
+	}
+	cl, err := smtp.NewClient(conn, host)
+	if err != nil {
+		return err
+	}
+	defer cl.Close()
+	if !implicit {
+		if ok, _ := cl.Extension("STARTTLS"); ok {
+			if err := cl.StartTLS(tlsCfg); err != nil {
+				return err
+			}
+		}
+	}
+	if w.Cfg.SMTPClient.Username != "" {
+		auth := smtp.PlainAuth("", w.Cfg.SMTPClient.Username, w.Cfg.SMTPClient.Password, host)
+		if err := cl.Auth(auth); err != nil {
+			return err
+		}
+	}
+	if err := cl.Mail(from); err != nil {
+		return err
+	}
+	for _, to := range tos {
+		if err := cl.Rcpt(to); err != nil {
+			return err
+		}
+	}
+	wc, err := cl.Data()
+	if err != nil {
+		return err
+	}
+	if _, err := wc.Write(raw); err != nil {
+		return err
+	}
+	if err := wc.Close(); err != nil {
+		return err
+	}
+	return cl.Quit()
 }
