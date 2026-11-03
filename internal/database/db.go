@@ -15,8 +15,9 @@ func Open(path string) (*sql.DB, error) {
 	if err != nil {
 		return nil, err
 	}
-	// 纯 Go 驱动无连接池并发写收益，单写连接最稳
-	db.SetMaxOpenConns(1)
+	// WAL 多连接：读并发不受限，写由 busy_timeout 仲裁
+	db.SetMaxOpenConns(10)
+	db.SetMaxIdleConns(5)
 	if err := db.Ping(); err != nil {
 		return nil, err
 	}
