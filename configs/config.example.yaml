@@ -1,0 +1,21 @@
+http:
+  listen: ":8080"
+smtp:
+  listen: ":25"
+  submission: ":587"
+  tls: ":465"
+  max_size_mb: 25
+imap:
+  listen: ":143"
+  tls: ":993"
+pop3:
+  listen: ":110"
+  tls: ":995"
+smtp_client:
+  smarthost: ""        # 如 "relay.example.com:587"，留空直连 MX
+tls:
+  cert_file: ""        # 留空自动自签
+  key_file: ""
+security:
+  jwt_secret: ""       # 留空首次启动自动生成
+  login_rate_per_min: 10

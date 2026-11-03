@@ -1,0 +1,87 @@
+// Private Email 自托管邮件服务器 · 单文件二进制入口。
+package main
+
+import (
+	"database/sql"
+	"flag"
+	"fmt"
+	"log"
+	"os"
+	"path/filepath"
+
+	"github.com/david88558855/private-email/internal/config"
+	"github.com/david88558855/private-email/internal/database"
+	"github.com/david88558855/private-email/internal/server"
+	"golang.org/x/crypto/bcrypt"
+)
+
+var version = "dev"
+
+var dataDirP string
+
+func main() {
+	var dataFlag string
+	var showVersion bool
+	flag.StringVar(&dataFlag, "data", "", "数据目录（默认：二进制所在目录/data）")
+	flag.BoolVar(&showVersion, "version", false, "打印版本")
+	flag.Parse()
+
+	if showVersion {
+		fmt.Println("private-email", version)
+		return
+	}
+
+	dataDir := dataFlag
+	if dataDir == "" {
+		exe, err := os.Executable()
+		if err != nil {
+			log.Fatalf("解析可执行文件路径失败: %v", err)
+		}
+		dataDir = filepath.Join(filepath.Dir(exe), "data")
+	}
+	for _, d := range []string{dataDir, filepath.Join(dataDir, "backup"), filepath.Join(dataDir, "keys"),
+		filepath.Join(dataDir, "certs"), filepath.Join(dataDir, "logs")} {
+		if err := os.MkdirAll(d, 0o700); err != nil {
+			log.Fatalf("创建数据目录失败 %s: %v", d, err)
+		}
+	}
+	dataDirP = dataDir
+	log.Printf("数据目录: %s", dataDir)
+
+	cfg, err := config.Load(dataDir)
+	if err != nil {
+		log.Fatalf("加载配置失败: %v", err)
+	}
+
+	db, err := database.Open(filepath.Join(dataDir, "db.sqlite"))
+	if err != nil {
+		log.Fatalf("打开数据库失败: %v", err)
+	}
+	if err := database.Migrate(db); err != nil {
+		log.Fatalf("数据库迁移失败: %v", err)
+	}
+	bootstrapAdmin(db)
+
+	r := server.New(db, cfg)
+	log.Printf("Private Email %s · HTTP %s 就绪", version, cfg.HTTP.Listen)
+	if err := r.Run(cfg.HTTP.Listen); err != nil {
+		log.Fatal(err)
+	}
+}
+
+// bootstrapAdmin 首次启动创建 admin 账号并输出随机密码。
+func bootstrapAdmin(db *sql.DB) {
+	var n int
+	db.QueryRow(`SELECT COUNT(*) FROM users`).Scan(&n)
+	if n > 0 {
+		return
+	}
+	pw := config.RandToken(16)
+	hash, _ := bcrypt.GenerateFromPassword([]byte(pw), bcrypt.DefaultCost)
+	if _, err := db.Exec(`INSERT INTO users(username, password, role) VALUES('admin', ?, 'admin')`, string(hash)); err != nil {
+		log.Fatalf("创建管理员失败: %v", err)
+	}
+	p := filepath.Join(dataDirP, "initial_admin_password.txt")
+	os.WriteFile(p, []byte("username: admin\npassword: "+pw+"\n"), 0o600)
+	log.Printf("首次启动：已创建管理员 admin，初始密码见 %s", p)
+}
