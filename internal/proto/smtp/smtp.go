@@ -177,9 +177,13 @@ func Serve(be *Backend) {
 	s := smtp.NewServer(be)
 	s.Domain = "private-email"
 	s.MaxMessageBytes = be.Config.SMTP.MaxSize * 1024 * 1024
-	s.AllowInsecureAuth = true
 	if be.Cert != nil {
+		// 有证书：走 STARTTLS 后认证（明文认证禁用）
 		s.TLSConfig = &tls.Config{Certificates: []tls.Certificate{*be.Cert}}
+		s.AllowInsecureAuth = false
+	} else {
+		// 无证书环境（内网/首启）允许明文认证兜底
+		s.AllowInsecureAuth = true
 	}
 	s.ReadTimeout = 2 * time.Minute
 	s.WriteTimeout = 2 * time.Minute

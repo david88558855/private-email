@@ -433,7 +433,11 @@ async function createUser() {
 }
 async function userOp(id, op) {
   let pwd = '';
-  if (op === 'reset') { pwd = prompt('输入新密码（至少 6 位）'); if (!pwd) return; }
+  if (op === 'reset') {
+    pwd = prompt('输入新密码（至少 6 位）');
+    if (!pwd) return;
+    if (pwd.length < 6) { toast('密码至少 6 位'); return; }
+  }
   await api.req(`/admin/users/${id}`, { method: 'PATCH', body: JSON.stringify({ op, password: pwd }) });
   toast('操作成功'); loadAdmin();
 }
