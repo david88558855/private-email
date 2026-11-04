@@ -110,7 +110,8 @@
       <!-- ===== 收件箱 ===== -->
       <section class="view" id="v-inbox">
         <div class="inbox-tools">
-          <div class="search"><svg><use href="#i-search"/></svg><input id="q" placeholder="搜索邮件、发件人、验证码…"></div>
+          <select id="mbSwitch" title="切换邮箱" style="height:42px;border:2px solid var(--outline);border-radius:var(--r-input);background:var(--surface);padding:0 10px;font-size:13px;font-weight:600;color:var(--primary);outline:none;cursor:pointer"></select>
+        <div class="search"><svg><use href="#i-search"/></svg><input id="q" placeholder="搜索邮件、发件人、验证码…"></div>
           <div class="seg" id="segFilter">
             <button class="on" onclick="setFilter(this,'all')">全部</button>
             <button onclick="setFilter(this,'unread')">未读</button>

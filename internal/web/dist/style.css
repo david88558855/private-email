@@ -283,7 +283,7 @@ svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.7;stroke
 @media(max-width:1100px){.stat-grid{grid-template-columns:repeat(2,1fr)}.dash-row{grid-template-columns:1fr}.inbox-grid{grid-template-columns:1fr;height:auto}.maillist{max-height:400px}}
 
 /* ===== 工程版补充 ===== */
-.folder-strip{display:flex;gap:6px;padding:10px 14px;border-bottom:1px solid var(--line);flex:none;overflow-x:auto}
+.folder-strip{display:flex;flex-wrap:wrap;gap:6px;padding:10px 14px;border-bottom:1px solid var(--line);flex:none}
 .folder-strip button{flex:none;padding:5px 12px;border-radius:8px;font-size:12.5px;font-weight:500;color:var(--osv);background:var(--surface-2)}
 .folder-strip button.on{background:var(--pc);color:var(--on-pc)}
 .folder-strip button:hover:not(.on){background:var(--surface-3)}

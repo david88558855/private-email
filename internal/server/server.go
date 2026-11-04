@@ -43,6 +43,7 @@ func New(db *sql.DB, cfg *config.Config, st *store.Store) *gin.Engine {
 	authed.PATCH("/admin/users/:id", mail.UserPatch)
 	authed.GET("/admin/domains", mail.Domains)
 	authed.POST("/admin/domains", mail.DomainAdd)
+	authed.DELETE("/admin/domains/:id", mail.DomainDelete)
 	authed.GET("/admin/settings", mail.Settings)
 	authed.PUT("/admin/settings", mail.SettingsPut)
 	authed.GET("/domains", mail.DomainsList)

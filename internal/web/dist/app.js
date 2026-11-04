@@ -174,6 +174,25 @@ async function loadDashboard() {
 
 /* ---------- 收件箱 ---------- */
 async function loadInbox() {
+  // 邮箱切换下拉（切换后文件夹与列表全部跟随）
+  const sel = $('#mbSwitch');
+  if (sel && sel.options.length !== state.mailboxes.length) {
+    sel.innerHTML = state.mailboxes.map((m) =>
+      `<option value="${m.id}" ${m.id === state.mb?.id ? 'selected' : ''}>${esc(m.address)}</option>`).join('');
+  } else if (sel && state.mb) { sel.value = String(state.mb.id); }
+  if (sel && !sel._bound) {
+    sel._bound = true;
+    sel.onchange = async () => {
+      state.mb = state.mailboxes.find((m) => m.id === +sel.value);
+      state.folder = null; state.folderName = 'INBOX'; state.mail = null;
+      $('#sideMail').textContent = state.mb.address;
+      await refreshFolders();
+      const inbox = state.folders.find((f) => f.name === 'INBOX');
+      state.folder = inbox?.id || state.folders[0]?.id;
+      await loadMails(); renderFolderStrip();
+      toast('已切换：' + state.mb.address);
+    };
+  }
   await refreshFolders();
   if (!state.folder) { const inbox = state.folders.find((f) => f.name === 'INBOX'); state.folder = inbox?.id || state.folders[0]?.id; }
   renderFolderStrip();
@@ -268,18 +287,24 @@ async function sendCompose() {
 async function loadMailboxes() {
   state.mailboxes = (await api.req('/mailboxes')).items;
   const domains = (await api.req('/domains')).items;
-  $('#mbDomain').innerHTML = domains.map((d) => `<option value="${d.id}">${esc(d.domain)}</option>`).join('');
-  $('#mbCards').innerHTML = state.mailboxes.map((mb, i) => `
+  if (domains.length) {
+    $('#mbDomain').disabled = false;
+    $('#mbDomain').innerHTML = domains.map((d) => `<option value="${d.id}">${esc(d.domain)}</option>`).join('');
+  } else {
+    $('#mbDomain').disabled = true;
+    $('#mbDomain').innerHTML = '<option value="">请先在后台添加域名</option>';
+  }
+  $('#mbCards').innerHTML = state.mailboxes.length ? state.mailboxes.map((mb, i) => `
     <div class="panel" style="margin-bottom:14px">
       <h4><svg style="color:var(--primary)"><use href="#i-mail"/></svg>${esc(mb.address)}
         ${mb.is_active ? '' : '<span class="snip" style="color:var(--error)">已停用</span>'}
         ${state.mb?.id === mb.id ? '<span class="snip">默认</span>' : ''}</h4>
       <div style="display:flex;gap:10px;align-items:center;margin-top:12px">
-        <span class="hint" style="flex:1">INBOX ${state.folders[0]?.total || 0} 封 · 未读 ${state.folders[0]?.unread || 0}</span>
+        <span class="hint" style="flex:1">${mb.is_active ? '收发正常' : '已暂停收发'}</span>
         <button class="btn text" onclick="toggleMb(${mb.id}, ${mb.is_active ? 'false' : 'true'})">${mb.is_active ? '停用' : '启用'}</button>
         ${state.mb?.id === mb.id ? '' : `<button class="btn text" onclick="setDefaultMb(${mb.id})">设为默认</button>`}
       </div>
-    </div>`).join('');
+    </div>`).join('') : '<div class="empty" style="grid-column:1/-1;padding:48px 0"><svg><use href="#i-mail"/></svg>暂无邮箱 · 用上方表单创建第一个</div>';
 }
 async function createMailbox() {
   try {
@@ -391,9 +416,10 @@ async function loadAdmin() {
       </td></tr>`).join('');
   } else if (t === 'domains') {
     const ds = (await api.req('/admin/domains')).items;
-    $('#aDomainsTbl').innerHTML = `<tr><th>域名</th><th>DKIM 记录</th></tr>` + ds.map((d) => `
+    $('#aDomainsTbl').innerHTML = `<tr><th>域名</th><th>DKIM 记录</th><th></th></tr>` + (ds.length ? ds.map((d) => `
       <tr><td><b>${esc(d.domain)}</b><div class="hint">${esc(d.created_at.slice(0, 10))}</div></td>
-      <td>${d.dkim_dns ? `<div class="hint">${esc(d.dkim_dns.host)}</div><code style="font-size:11px;color:var(--osv);word-break:break-all">${esc(d.dkim_dns.record.slice(0, 72))}…</code>` : '<span class="hint">生成中</span>'}</td></tr>`).join('');
+      <td>${d.dkim_dns ? `<div class="hint">${esc(d.dkim_dns.host)}</div><code style="font-size:11px;color:var(--osv);word-break:break-all">${esc(d.dkim_dns.record.slice(0, 72))}…</code>` : '<span class="hint">生成中</span>'}</td>
+      <td><button class="btn text" style="color:var(--error);height:32px;padding:0 10px" onclick="delDomain(${d.id}, '${esc(d.domain)}')">删除</button></td></tr>`).join('') : '<tr><td colspan=3 class="hint">暂无域名</td></tr>');
   } else if (t === 'queue') {
     const q = (await api.req('/queue')).items;
     $('#aQueueTbl2').innerHTML = `<tr><th>状态</th><th>发件人</th><th>收件人</th><th>尝试</th><th>时间</th><th>错误</th></tr>` + (q.length ? q.map((r) => `
@@ -445,6 +471,13 @@ async function userOp(id, op) {
   toast('操作成功'); loadAdmin();
 }
 async function resetPw(id) { userOp(id, 'reset'); }
+async function delDomain(id, name) {
+  if (!confirm('确定删除域名 ' + name + '？其下有邮箱时会被拒绝')) return;
+  try {
+    await api.req(`/admin/domains/${id}`, { method: 'DELETE' });
+    toast('域名已删除'); loadAdmin();
+  } catch (e) { toast(e.error || '删除失败'); }
+}
 async function addDomain() {
   try {
     await api.req('/admin/domains', { method: 'POST', body: JSON.stringify({ domain: $('#ndName').value.trim() }) });

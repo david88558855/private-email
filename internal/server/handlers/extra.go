@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -234,5 +235,32 @@ func (h *MailHandler) MailboxPatch(c *gin.Context) {
 		v = 1
 	}
 	h.Store.DB.Exec(`UPDATE mailboxes SET is_active=? WHERE id=?`, v, mbID)
+	c.JSON(http.StatusOK, gin.H{"ok": true})
+}
+
+// DomainDelete DELETE /api/v1/admin/domains/:id —— 删除域名（有邮箱时拒绝）。
+func (h *MailHandler) DomainDelete(c *gin.Context) {
+	if !adminOK(c) {
+		return
+	}
+	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	var n int64
+	h.Store.DB.QueryRow(`SELECT COUNT(*) FROM mailboxes WHERE domain_id=?`, id).Scan(&n)
+	if n > 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("该域名下仍有 %d 个邮箱，请先删除", n)})
+		return
+	}
+	res, err := h.Store.DB.Exec(`DELETE FROM domains WHERE id=?`, id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "服务异常"})
+		return
+	}
+	if k, _ := res.RowsAffected(); k == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "域名不存在"})
+		return
+	}
+	h.Store.DB.Exec(`DELETE FROM dkim_keys WHERE domain_id=?`, id)
+	h.Store.DB.Exec(`INSERT INTO audit_logs(user_id, action, detail) VALUES(?,?,?)`,
+		c.GetInt64("user_id"), "domain_delete", c.Param("id"))
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
