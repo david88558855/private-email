@@ -367,11 +367,10 @@ func (m *Mailbox) Expunge() error {
 // Serve 启动 IMAP 明文/STARTTLS（143）与隐式 TLS（993，M6 配证书后启用）。
 func Serve(b *Backend, cfg *config.Config) {
 	s := imapserver.New(b)
+	// 同 SMTP：明文认证保留（内网兼容），993/STARTTLS 可用时客户端应升级
+	s.AllowInsecureAuth = true
 	if b.Cert != nil {
 		s.TLSConfig = &tls.Config{Certificates: []tls.Certificate{*b.Cert}}
-		s.AllowInsecureAuth = false // 有 STARTTLS 能力时禁明文
-	} else {
-		s.AllowInsecureAuth = true
 	}
 	go func() {
 		log.Printf("IMAP 服务就绪 %s", cfg.IMAP.Listen)

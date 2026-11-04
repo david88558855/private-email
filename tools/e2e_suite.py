@@ -42,7 +42,7 @@ def smtp_send(frm, to, subject, text, html=None):
 ctx = ssl.create_default_context(); ctx.check_hostname = False; ctx.verify_mode = ssl.CERT_NONE
 
 print('=== 1. 认证 ===')
-pw = os.environ.get('PE_PW', 'adnin')  # v2.0 默认管理员密码
+pw = os.environ.get('PE_PW', 'admin')  # 默认管理员密码
 st, r = http('/auth/login', {'username': 'admin', 'password': 'wrong'}); ok('错误密码拒绝', st == 401)
 st, r = http('/auth/login', {'username': 'admin', 'password': pw}); ok('登录', st == 200 and r.get('token')); T = r['token']
 st, r = http('/auth/login', {'username': 'admin', 'password': pw}); T2 = r.get('token', '')

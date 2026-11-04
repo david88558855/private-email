@@ -179,11 +179,12 @@ async function loadInbox() {
 }
 function renderFolderStrip() {
   $('#folderStrip').innerHTML = state.folders.map((f) =>
-    `<button class="${f.id === state.folder ? 'on' : ''}" onclick="switchFolder(${f.id}, '${f.name}')">${esc(f.name)}${f.unread ? ` ${f.unread}` : ''}</button>`).join('');
+    `<button class="${f.id === state.folder ? 'on' : ''}" data-fid="${f.id}">${esc(f.name)}${f.unread ? ` ${f.unread}` : ''}</button>`).join('');
+  $$('#folderStrip [data-fid]').forEach((b) => b.onclick = () => switchFolder(+b.dataset.fid));
   const f = state.folders.find((x) => x.id === state.folder);
   $('#mailPanelHd').innerHTML = `<svg style="color:var(--primary)"><use href="#i-inbox"/></svg>${esc(f?.name || '收件箱')}<span class="badge ${f?.unread ? '' : 'zero'}">${f?.unread || 0}</span>`;
 }
-function switchFolder(id, name) { state.folder = id; state.folderName = name; renderFolderStrip(); loadMails(); }
+function switchFolder(id) { const f = state.folders.find((x) => x.id === id); state.folder = id; state.folderName = f?.name || 'INBOX'; renderFolderStrip(); loadMails(); }
 function setFilter(btn, f) { state.filter = f; $$('#segFilter button').forEach((b) => b.classList.toggle('on', b === btn)); renderList(); }
 let qT; $('#q').addEventListener('input', (e) => { clearTimeout(qT); qT = setTimeout(() => { state.q = e.target.value.trim(); loadMails(); }, 350); });
 
