@@ -72,6 +72,9 @@ func main() {
 	st.Bootstrap()
 	st.RebuildFTSBody()
 
+	// 端口设置（管理员可在 Web 修改，优先于 config.yaml）
+	applyPortSettings(cfg, st)
+
 	// TLS（M6：D4 自签或自有证书）
 	cert := tlsutil.Load(filepath.Join(dataDir, "certs"), cfg.TLS.CertFile, cfg.TLS.KeyFile)
 
@@ -109,4 +112,26 @@ func bootstrapAdmin(db *sql.DB) {
 	p := filepath.Join(dataDirP, "initial_admin_password.txt")
 	os.WriteFile(p, []byte("username: admin\npassword: "+pw+"\n"), 0o600)
 	log.Printf("首次启动：已创建管理员 admin，初始密码见 %s", p)
+}
+
+// applyPortSettings 端口类设置覆盖配置（设置表有值则以 Web 设置为准）。
+func applyPortSettings(cfg *config.Config, st *store.Store) {
+	pairs := map[string]*string{
+		"smtp_listen":     &cfg.SMTP.Listen,
+		"smtp_submission": &cfg.SMTP.Submission,
+		"smtp_tls":        &cfg.SMTP.TLS,
+		"imap_listen":     &cfg.IMAP.Listen,
+		"imap_tls":        &cfg.IMAP.TLS,
+		"pop3_listen":     &cfg.POP3.Listen,
+		"pop3_tls":        &cfg.POP3.TLS,
+	}
+	for k, dst := range pairs {
+		if !st.HasSetting(k) {
+			// 首次播种：设置表以 config.yaml 现值为初始事实源
+			st.SetSetting(k, *dst)
+		}
+		if v := st.GetSetting(k); v != "" {
+			*dst = v
+		}
+	}
 }

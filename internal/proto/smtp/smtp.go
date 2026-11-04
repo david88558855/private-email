@@ -16,6 +16,7 @@ import (
 	"github.com/david88558855/private-email/internal/mailutil"
 	"github.com/david88558855/private-email/internal/store"
 	"github.com/emersion/go-msgauth/dkim"
+	"github.com/emersion/go-sasl"
 	"github.com/emersion/go-smtp"
 )
 
@@ -26,11 +27,12 @@ type Backend struct {
 }
 
 type session struct {
-	be    *Backend
-	conn  *smtp.Conn
-	from  string
-	rcpts []string
-	helo  string
+	be       *Backend
+	conn     *smtp.Conn
+	from     string
+	rcpts    []string
+	helo     string
+	authUser string // 已认证的邮箱地址（587 提交）
 }
 
 func (b *Backend) NewSession(conn *smtp.Conn) (smtp.Session, error) {
@@ -38,6 +40,30 @@ func (b *Backend) NewSession(conn *smtp.Conn) (smtp.Session, error) {
 }
 
 func (s *session) Reset() { s.from = ""; s.rcpts = nil }
+
+// AuthMechanisms / Auth：587 提交端口认证（D2：Web 密码或 App 专用密码）。
+func (s *session) AuthMechanisms() []string { return []string{sasl.Plain, sasl.Login} }
+
+func (s *session) Auth(mech string) (sasl.Server, error) {
+	switch mech {
+	case sasl.Plain:
+		return sasl.NewPlainServer(func(identity, username, password string) error {
+			return s.authenticate(username, password)
+		}), nil
+	case sasl.Login:
+		return &loginServer{cb: s.authenticate}, nil
+	}
+	return nil, smtp.ErrAuthUnsupported
+}
+
+func (s *session) authenticate(username, password string) error {
+	mb, ok := s.be.Store.VerifyMailboxAuth(username, password)
+	if !ok {
+		return smtp.ErrAuthFailed
+	}
+	s.authUser = mb.Address
+	return nil
+}
 
 func (s *session) Mail(from string, opts *smtp.MailOptions) error {
 	s.helo = s.conn.Hostname()
@@ -190,3 +216,31 @@ func listen(s *smtp.Server, addr, name string, cert *tls.Config) {
 }
 
 var _ = sql.ErrNoRows
+
+// loginServer SASL LOGIN 机制（go-sasl 未内置服务端实现）。
+type loginServer struct {
+	cb    func(username, password string) error
+	stage int
+	user  string
+}
+
+func (l *loginServer) Start(_ []byte) ([]byte, error) {
+	l.stage = 1
+	return []byte("Username:"), nil
+}
+
+func (l *loginServer) Next(msg []byte) ([]byte, bool, error) {
+	switch l.stage {
+	case 1:
+		l.user = string(msg)
+		l.stage = 2
+		return []byte("Password:"), false, nil
+	case 2:
+		if err := l.cb(l.user, string(msg)); err != nil {
+			return nil, false, err
+		}
+		l.stage = 3
+		return nil, true, nil
+	}
+	return nil, false, smtp.ErrAuthFailed
+}

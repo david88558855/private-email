@@ -24,6 +24,7 @@ func New(db *sql.DB, cfg *config.Config, st *store.Store) *gin.Engine {
 	api.POST("/auth/login", middleware.LoginRateLimit(cfg.Security.LoginRate), auth.Login)
 	authed := api.Group("", middleware.Auth(cfg.Security.JWTSecret))
 	authed.GET("/me", auth.Me)
+	authed.POST("/me/password", auth.ChangePassword)
 
 	mail := &handlers.MailHandler{Store: st}
 	authed.GET("/mailboxes", mail.Mailboxes)
@@ -44,6 +45,8 @@ func New(db *sql.DB, cfg *config.Config, st *store.Store) *gin.Engine {
 	authed.POST("/admin/domains", mail.DomainAdd)
 	authed.GET("/admin/settings", mail.Settings)
 	authed.PUT("/admin/settings", mail.SettingsPut)
+	authed.GET("/admin/ports", mail.Ports)
+	authed.PUT("/admin/ports", mail.PortsPut)
 	authed.GET("/admin/stats", mail.Stats)
 	authed.GET("/mailboxes/:id/app_passwords", mail.AppPasswords)
 	authed.POST("/mailboxes/:id/app_passwords", mail.AppPasswords)
