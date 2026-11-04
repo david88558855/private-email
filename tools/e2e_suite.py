@@ -42,7 +42,7 @@ def smtp_send(frm, to, subject, text, html=None):
 ctx = ssl.create_default_context(); ctx.check_hostname = False; ctx.verify_mode = ssl.CERT_NONE
 
 print('=== 1. 认证 ===')
-pw = open(os.environ.get('PE_DATA', '/tmp/pe-run/data') + '/initial_admin_password.txt').read().split('password: ')[1].strip()
+pw = os.environ.get('PE_PW', 'adnin')  # v2.0 默认管理员密码
 st, r = http('/auth/login', {'username': 'admin', 'password': 'wrong'}); ok('错误密码拒绝', st == 401)
 st, r = http('/auth/login', {'username': 'admin', 'password': pw}); ok('登录', st == 200 and r.get('token')); T = r['token']
 st, r = http('/auth/login', {'username': 'admin', 'password': pw}); T2 = r.get('token', '')
@@ -50,13 +50,35 @@ st, r = http('/me', token=T); ok('会话 /me', st == 200 and r.get('role') == 'a
 st, _ = http('/me'); ok('无 token 401', st == 401)
 st, _ = http('/me', token='x' * 40); ok('伪造 token 401', st == 401)
 
+
+# v2.0：无内置域名——套件自建测试域名与邮箱
+_st, _dl = http('/admin/domains', token=T)
+_dom = None
+for _d in (_dl.get('items') or []):
+    _st2, _mb = http(f"/mailboxes", token=T)
+    if not any(m['address'].split('@')[0] == 'admin' and m['address'].endswith('@' + _d['domain']) for m in _mb['items']):
+        _dom = _d
+        break
+if not _dom:
+    MBDOMAIN = f'qa-suite-{TAG}.test'
+    http('/admin/domains', {'domain': MBDOMAIN}, token=T, method='POST')
+    _st, _dl = http('/admin/domains', token=T)
+    _dom = [d for d in _dl['items'] if d['domain'] == MBDOMAIN][0]
+_st, _r = http('/mailboxes', {'prefix': 'admin', 'domain_id': _dom['id']}, token=T, method='POST')
+if _st == 200 and _r.get('address'):
+    MBOX = _r['address']
+else:
+    _st, _mb = http('/mailboxes', token=T)
+    MBOX = _mb['items'][0]['address'] if _mb['items'] else 'admin@' + _dom['domain']
+
 print('=== 2. SMTP 入站 ===')
-smtp_send('noreply@service-a.com', 'admin@local.test', 'Plain Mail', 'code is 111222', '<p>code is <b>111222</b></p>')
-smtp_send('noreply@service-b.com', 'admin@local.test', 'Chinese 中文主题', '验证码 334455 到期')
+smtp_send('noreply@service-a.com', MBOX, 'Plain Mail', 'code is 111222', '<p>code is <b>111222</b></p>')
+smtp_send('noreply@service-b.com', MBOX, 'Chinese 中文主题', '验证码 334455 到期')
 time.sleep(1.5)
 
 print('=== 3. 邮件读取/搜索/操作 ===')
-st, r = http('/mailboxes', token=T); ok('邮箱列表', st == 200 and len(r['items']) >= 1); MB = r['items'][0]['id']
+st, r = http('/mailboxes', token=T); ok('邮箱列表', st == 200 and len(r['items']) >= 1)
+MB = next((m['id'] for m in r['items'] if m['address'] == MBOX), r['items'][0]['id'])
 st, r = http(f'/mailboxes/{MB}/folders', token=T)
 folders = {f['name']: f for f in r['items']}
 ok('默认四文件夹', all(n in folders for n in ['INBOX', 'Sent', 'Drafts', 'Trash']))
@@ -81,7 +103,7 @@ st, r = http('/admin/stats', token=T); ok('管理员 stats', st == 200)
 st, r = http(f'/mails/{MID + 999999}', token=T); ok('不存在邮件 404/403', st in (403, 404))
 
 print('=== 5. 撰写与出站（smarthost 回环） ===')
-st, r = http(f'/mailboxes/{MB}/compose', {'to': 'admin@local.test', 'subject': 'Roundtrip self', 'text': 'loop body'}, token=T, method='POST')
+st, r = http(f'/mailboxes/{MB}/compose', {'to': MBOX, 'subject': 'Roundtrip self', 'text': 'loop body'}, token=T, method='POST')
 ok('撰写入队', st == 200)
 st, r = http('/queue', token=T); ok('队列接口', st == 200 and len(r.get('items', [])) >= 1)
 time.sleep(24)
@@ -89,9 +111,9 @@ st, r = http(f'/folders/{INBOX}/mails?q=Roundtrip', token=T); ok('出站回环�
 
 print('=== 6. IMAP ===')
 M = imaplib.IMAP4('127.0.0.1', 2143)
-try: M.login('admin@local.test', 'badpw'); ok('IMAP 错密码拒绝', False)
+try: M.login(MBOX, 'badpw'); ok('IMAP 错密码拒绝', False)
 except Exception: ok('IMAP 错密码拒绝', True)
-M.login('admin@local.test', pw)
+M.login(MBOX, pw)
 typ, d = M.list(); ok('LIST', len(d) >= 4)
 M.select('INBOX')
 typ, d = M.search(None, 'ALL'); ids = d[0].split(); ok('SEARCH ALL', len(ids) >= 1, f'n={len(ids)}')
@@ -106,13 +128,13 @@ typ, d = M.search(None, 'ALL'); ok('COPY 生效', len(d[0].split()) == 1)
 typ, d = M.store('1', '+FLAGS', '\\Deleted'); M.select(FOLDER); M.expunge(); ok('EXPUNGE', True)
 M.delete(FOLDER)
 typ, d = M.status('INBOX', '(MESSAGES UNSEEN UIDNEXT UIDVALIDITY)'); ok('STATUS', typ == 'OK')
-M.append('Sent', '(\\Seen)', None, b'From: admin@local.test\r\nSubject: via append ' + TAG.encode() + b'\r\n\r\nbody')
+M.append('Sent', '(\\Seen)', None, b'From: ' + MBOX.encode() + b'\r\nSubject: via append ' + TAG.encode() + b'\r\n\r\nbody')
 M.select('Sent'); typ, d = M.search(None, 'SUBJECT', 'append'); ok('APPEND', len(d[0].split()) >= 1)
 M.logout()
 
 print('=== 7. POP3 ===')
 P = poplib.POP3('127.0.0.1', 2110)
-P.user('admin@local.test'); P.pass_(pw)
+P.user(MBOX); P.pass_(pw)
 n, sz = P.stat(); ok('STAT', n >= 2, f'n={n}')
 ok('UIDL', len(P.uidl()[1]) == n)
 resp, lines, oct = P.retr(1); ok('RETR', oct > 50)
@@ -126,13 +148,13 @@ try:
     s = smtplib.SMTP_SSL('127.0.0.1', 9465, context=ctx, timeout=5); s.noop(); s.quit(); ok('SMTPS', True)
 except Exception as e: ok('SMTPS', False, str(e))
 try:
-    M = imaplib.IMAP4_SSL('127.0.0.1', 9943, ssl_context=ctx); M.login('admin@local.test', pw); M.logout(); ok('IMAPS', True)
+    M = imaplib.IMAP4_SSL('127.0.0.1', 9943, ssl_context=ctx); M.login(MBOX, pw); M.logout(); ok('IMAPS', True)
 except Exception as e: ok('IMAPS', False, str(e))
 try:
-    P = poplib.POP3_SSL('127.0.0.1', 9955, context=ctx); P.user('admin@local.test'); P.pass_(pw); P.quit(); ok('POP3S', True)
+    P = poplib.POP3_SSL('127.0.0.1', 9955, context=ctx); P.user(MBOX); P.pass_(pw); P.quit(); ok('POP3S', True)
 except Exception as e: ok('POP3S', False, str(e))
 s = smtplib.SMTP('127.0.0.1', 2525, timeout=5); s.starttls(context=ctx); s.quit(); ok('SMTP STARTTLS', True)
-M = imaplib.IMAP4('127.0.0.1', 2143); M.starttls(ssl_context=ctx); M.login('admin@local.test', pw); M.logout(); ok('IMAP STARTTLS', True)
+M = imaplib.IMAP4('127.0.0.1', 2143); M.starttls(ssl_context=ctx); M.login(MBOX, pw); M.logout(); ok('IMAP STARTTLS', True)
 
 print('=== 9. 邮箱自助管理 ===')
 st, r = http('/domains', token=T); ok('域名列表(普通用户)', st == 200 and len(r['items']) >= 1); dom_id = r['items'][0]['id']
@@ -172,14 +194,15 @@ st, r = http('/admin/settings', {'registration_enabled': False}, token=T, method
 st, r = http('/auth/register', {'username': 'reg2' + TAG, 'password': 'regpass88'}); ok('关闭后注册拒绝', st == 403)
 st, r = http('/admin/settings', token=T); ok('设置持久化', r.get('registration_enabled') == False)
 st, r = http('/admin/users', token=T); ok('注册用户在列', any(u['username'] == 'reg1' + TAG for u in r['items']))
-st, r = http(f'/mailboxes/{MB}/app_passwords', {'label': 'audit'}, token=T, method='POST'); apw = r.get('password', '')
+_mid = next((m['id'] for m in http('/mailboxes', token=T)[1]['items'] if m['address'] == MBOX), MB)
+st, r = http(f'/mailboxes/{_mid}/app_passwords', {'label': 'audit'}, token=T, method='POST'); apw = r.get('password', '')
 ok('生成 App 密码', len(apw) >= 16)
-M = imaplib.IMAP4('127.0.0.1', 2143); M.login('admin@local.test', apw); M.logout(); ok('App 密码 IMAP 登录', True)
-st, r = http(f'/mailboxes/{MB}/app_passwords', token=T); ok('App 密码列表', any(x['label'] == 'audit' for x in r['items']))
+M = imaplib.IMAP4('127.0.0.1', 2143); M.login(MBOX, apw); M.logout(); ok('App 密码 IMAP 登录', True)
+st, r = http(f'/mailboxes/{_mid}/app_passwords', token=T); ok('App 密码列表', any(x['label'] == 'audit' for x in r['items']))
 
 print('=== 11. RCPT 拒收与限速 ===')
 try:
-    smtp_send('x@y.com', 'nobody@local.test', 't', 't'); ok('未知收件人拒收', False)
+    smtp_send('x@y.com', 'nobody@nowhere.invalid', 't', 't'); ok('未知收件人拒收', False)
 except smtplib.SMTPRecipientsRefused: ok('未知收件人拒收', True)
 served = 0
 for i in range(12):

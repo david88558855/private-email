@@ -109,9 +109,7 @@ func bootstrapAdmin(db *sql.DB) {
 	if _, err := db.Exec(`INSERT INTO users(username, password, role) VALUES('admin', ?, 'admin')`, string(hash)); err != nil {
 		log.Fatalf("创建管理员失败: %v", err)
 	}
-	p := filepath.Join(dataDirP, "initial_admin_password.txt")
-	os.WriteFile(p, []byte("username: admin\npassword: "+pw+"\n"), 0o600)
-	log.Printf("首次启动：已创建管理员 admin，初始密码见 %s", p)
+	log.Printf("首次启动：已创建管理员 admin，默认密码 %s（请登录后立即修改）", pw)
 }
 
 // applyPortSettings 端口类设置覆盖配置（设置表有值则以 Web 设置为准）。
