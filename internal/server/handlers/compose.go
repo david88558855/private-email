@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"fmt"
+	"log"
 	"mime"
 	"net/http"
 	"net/textproto"
@@ -57,14 +58,19 @@ func (h *MailHandler) Compose(c *gin.Context) {
 	buf.Write(encodeB64(req.Text))
 	raw := buf.Bytes()
 
-	// 存 Sent
+	// 存 Sent（失败仅记日志，不阻断投递）
 	sentID, err := h.Store.FolderID(mbID, "Sent")
 	if err == nil {
-		h.Store.InsertMail(sentID, mb.Address, req.To, req.Subject, raw, "\\Seen", "", 0, req.Text)
+		if _, _, err := h.Store.InsertMail(sentID, mb.Address, req.To, req.Subject, raw, "\\Seen", "", 0, req.Text); err != nil {
+			log.Printf("存 Sent 副本失败: %v", err)
+		}
 	}
-	// 入投递队列
-	h.Store.DB.Exec(`INSERT INTO mail_queue(mailbox_id, from_addr, to_addr, raw_blob, next_try_at)
-		VALUES(?,?,?,?,datetime('now'))`, mbID, mb.Address, req.To, raw)
+	// 入投递队列（失败返回 500——用户需知道没发出去）
+	if _, err := h.Store.DB.Exec(`INSERT INTO mail_queue(mailbox_id, from_addr, to_addr, raw_blob, next_try_at)
+		VALUES(?,?,?,?,datetime('now'))`, mbID, mb.Address, req.To, raw); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "入队失败，请重试"})
+		return
+	}
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 

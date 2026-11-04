@@ -143,7 +143,11 @@ async function boot() {
   showView('dashboard');
   setInterval(async () => {
     if (state.view === 'inbox' && !state.q && state.folder) { await refreshFolders(); await loadMails(true); }
-  }, 20000);
+  }, 8000);
+  // 回到页面立即刷新收件箱
+  window.addEventListener('focus', () => {
+    if (state.view === 'inbox' && state.folder) { refreshFolders(); loadMails(true); }
+  });
 }
 async function refreshFolders() { if (state.mb) state.folders = (await api.req(`/mailboxes/${state.mb.id}/folders`)).items; renderNav(); }
 function showLogin() { $('#app').classList.remove('on'); $('#login').style.display = 'flex'; initLogin(); }
@@ -279,7 +283,13 @@ async function sendCompose() {
   try {
     await api.req(`/mailboxes/${state.mb.id}/compose`, { method: 'POST',
       body: JSON.stringify({ to: $('#cpTo').value.trim(), subject: $('#cpSubject').value, text: $('#cpText').value }) });
-    closeDlg('composeDlg'); toast('已发送 · 进入投递队列');
+    closeDlg('composeDlg');
+    toast('已发送 · 进入投递队列');
+    // 立即刷新文件夹统计与当前列表（已发送/收件箱即时可见）
+    await refreshFolders();
+    renderFolderStrip();
+    if (state.folder) await loadMails(true);
+    renderNav();
   } catch (e) { $('#cpErr').textContent = e.error || '发送失败'; }
 }
 
