@@ -17,3 +17,10 @@ test:
 
 clean:
 	rm -rf dist
+
+# 双平台发布构建（linux + win 一次出齐）
+VERSION ?= $(shell git log -1 --pretty=%h)
+release:
+	GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=$(V)" -o dist/private-email-linux-x64 ./cmd/server
+	GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=$(V)" -o dist/private-email-win-x64.exe ./cmd/server
+	@echo "dist/ 双平台产物就绪：$(V)"
