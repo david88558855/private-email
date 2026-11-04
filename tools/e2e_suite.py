@@ -42,7 +42,7 @@ def smtp_send(frm, to, subject, text, html=None):
 ctx = ssl.create_default_context(); ctx.check_hostname = False; ctx.verify_mode = ssl.CERT_NONE
 
 print('=== 1. 认证 ===')
-pw = open(os.environ.get('PE_DATA', './data') + '/initial_admin_password.txt').read().split('password: ')[1].strip()
+pw = open(os.environ.get('PE_DATA', '/tmp/pe-run/data') + '/initial_admin_password.txt').read().split('password: ')[1].strip()
 st, r = http('/auth/login', {'username': 'admin', 'password': 'wrong'}); ok('错误密码拒绝', st == 401)
 st, r = http('/auth/login', {'username': 'admin', 'password': pw}); ok('登录', st == 200 and r.get('token')); T = r['token']
 st, r = http('/auth/login', {'username': 'admin', 'password': pw}); T2 = r.get('token', '')
@@ -134,7 +134,19 @@ except Exception as e: ok('POP3S', False, str(e))
 s = smtplib.SMTP('127.0.0.1', 2525, timeout=5); s.starttls(context=ctx); s.quit(); ok('SMTP STARTTLS', True)
 M = imaplib.IMAP4('127.0.0.1', 2143); M.starttls(ssl_context=ctx); M.login('admin@local.test', pw); M.logout(); ok('IMAP STARTTLS', True)
 
-print('=== 9. 管理端 ===')
+print('=== 9. 邮箱自助管理 ===')
+st, r = http('/domains', token=T); ok('域名列表(普通用户)', st == 200 and len(r['items']) >= 1); dom_id = r['items'][0]['id']
+st, r = http('/mailboxes', {'prefix': 'qa-extra' + TAG, 'domain_id': dom_id}, token=T, method='POST')
+ok('创建邮箱', st == 200 and ('qa-extra' + TAG) in r.get('address', ''))
+st, r = http('/mailboxes', {'prefix': 'BAD NAME!', 'domain_id': dom_id}, token=T, method='POST'); ok('非法前缀拒绝', st == 400)
+st, r = http('/mailboxes', {'prefix': 'admin', 'domain_id': dom_id}, token=T, method='POST'); ok('占用地址拒绝', st == 409)
+mbs2 = http('/mailboxes', token=T)[1]['items']
+newmb = [m for m in mbs2 if (TAG) in m['address'] and 'qa-extra' in m['address']]
+st, r = http(f"/mailboxes/{newmb[0]['id']}", {'active': False}, token=T, method='PATCH'); ok('停用邮箱', st == 200)
+mbs3 = http('/mailboxes', token=T)[1]['items']
+ok('停用生效', [m for m in mbs3 if m['id'] == newmb[0]['id']][0]['is_active'] == False)
+
+print('=== 10. 管理端 ===')
 st, r = http('/admin/domains', token=T)
 ok('域名列表', st == 200 and any('dkim_dns' in d for d in r['items']))
 dkim_host = [d for d in r['items'] if 'dkim_dns' in d][0]['dkim_dns']['host']
@@ -165,7 +177,7 @@ ok('生成 App 密码', len(apw) >= 16)
 M = imaplib.IMAP4('127.0.0.1', 2143); M.login('admin@local.test', apw); M.logout(); ok('App 密码 IMAP 登录', True)
 st, r = http(f'/mailboxes/{MB}/app_passwords', token=T); ok('App 密码列表', any(x['label'] == 'audit' for x in r['items']))
 
-print('=== 10. RCPT 拒收与限速 ===')
+print('=== 11. RCPT 拒收与限速 ===')
 try:
     smtp_send('x@y.com', 'nobody@local.test', 't', 't'); ok('未知收件人拒收', False)
 except smtplib.SMTPRecipientsRefused: ok('未知收件人拒收', True)

@@ -17,6 +17,8 @@ const api = {
 const state = {
   view: 'dashboard', folder: null, mail: null, mails: [], filter: 'all',
   mailboxes: [], folders: [], mb: null, me: null, q: '', admTab: 'ov',
+  adminConsole: false, // true=管理后台会话（侧栏仅管理）
+  loginMode: 'user', // user | admin | register
 };
 
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -43,12 +45,39 @@ const VIEWS = {
   forward: { title: '转发规则', icon: 'i-fwd', group: '管理' },
   verif: { title: '验证码规则', icon: 'i-key', group: '管理' },
   settings: { title: '账号设置', icon: 'i-tune', group: '管理' },
-  admin: { title: '管理面板', icon: 'i-shield', group: '管理', adminOnly: true },
+  admin: { title: '后台管理', icon: 'i-shield', group: '管理', adminOnly: true },
+};
+// 管理后台侧栏（adminConsole 会话专用）
+const ADMIN_VIEWS = {
+  'admin:ov': { title: '概览', icon: 'i-dash' },
+  'admin:users': { title: '用户', icon: 'i-users' },
+  'admin:domains': { title: '域名', icon: 'i-globe' },
+  'admin:queue': { title: '投递队列', icon: 'i-mon' },
+  'admin:conf': { title: '系统设置', icon: 'i-tune' },
 };
 function renderNav() {
   const nav = $('#sideNav');
   const unread = state.folders.find((f) => f.name === 'INBOX')?.unread || 0;
-  let html = '', group = '';
+  let html = '';
+  if (state.adminConsole) {
+    // 管理后台会话：仅管理五项
+    for (const [id, v] of Object.entries(ADMIN_VIEWS)) {
+      const tab = id.split(':')[1];
+      const on = state.view === 'admin' && state.admTab === tab;
+      html += `<button class="nav-item ${on ? 'on' : ''}" data-at="${tab}">
+        <svg class="ic"><use href="#${v.icon}"/></svg>${v.title}</button>`;
+    }
+    nav.innerHTML = html;
+    nav.querySelectorAll('[data-at]').forEach((b) => b.onclick = () => {
+      state.admTab = b.dataset.at;
+      $$('#admTabs [data-t]').forEach((t) => t.classList.toggle('on', t.dataset.t === b.dataset.at));
+      $$('#v-admin .adm-sec').forEach((e) => (e.hidden = true));
+      $(`#adm${b.dataset.at === 'ov' ? 'Ov' : b.dataset.at[0].toUpperCase() + b.dataset.at.slice(1)}`) && ($(`#adm${b.dataset.at === 'ov' ? 'Ov' : b.dataset.at[0].toUpperCase() + b.dataset.at.slice(1)}`).hidden = false);
+      renderNav(); loadAdmin();
+    });
+    return;
+  }
+  let group = '';
   for (const [id, v] of Object.entries(VIEWS)) {
     if (v.adminOnly && state.me?.role !== 'admin') continue;
     if (v.group !== group) { group = v.group; html += `<div class="nav-label">${group}</div>`; }
@@ -62,9 +91,10 @@ function renderNav() {
 async function showView(v) {
   if (v === 'login') return;
   state.view = v;
+  if (v === 'admin') state.adminConsole = true;
   $$('#content .view').forEach((e) => (e.hidden = true));
   $(`#v-${v}`).hidden = false;
-  $('#viewTitle').textContent = VIEWS[v].title;
+  $('#viewTitle').textContent = v === 'admin' ? '管理后台' : VIEWS[v].title;
   renderNav();
   const loaders = { dashboard: loadDashboard, inbox: loadInbox, mailboxes: loadMailboxes,
     forward: () => loadRules('forward'), verif: () => loadRules('verif'),
@@ -76,26 +106,50 @@ async function showView(v) {
 async function initLogin() {
   try {
     const s = await fetch('/api/v1/settings').then((r) => r.json());
-    if (s.registration_enabled) $('#lgReg').style.display = 'inline';
+    $('#lgReg').dataset.open = s.registration_enabled ? '1' : '0';
+    if (!s.registration_enabled) { $('#lgReg').style.display = 'none'; }
   } catch {}
+}
+function setLoginMode(mode) {
+  state.loginMode = mode;
+  const reg = mode === 'register', adm = mode === 'admin';
+  $('#lgPass2').style.display = reg ? '' : 'none';
+  $('#lgBtn').textContent = reg ? '注 册' : (adm ? '管理员登录' : '登 录');
+  $('#lgUser').label = adm ? '管理员用户名' : '用户名';
+  $('#lgReg').style.display = (!reg && $('#lgReg').dataset.open === '1') ? 'inline' : 'none';
+  $('#lgAdmin').style.display = adm ? 'none' : '';
+  $('#lgBackUser').style.display = adm || reg ? '' : 'none';
+  $('#lgErr').textContent = '';
 }
 async function doLogin() {
   $('#lgErr').textContent = '';
+  const u = $('#lgUser').value.trim(), p = $('#lgPass').value;
   try {
-    const r = await api.req('/auth/login', {
-      method: 'POST',
-      body: JSON.stringify({ username: $('#lgUser').value.trim(), password: $('#lgPass').value }),
-    });
+    if (state.loginMode === 'register') {
+      if (p !== $('#lgPass2').value) { $('#lgErr').textContent = '两次输入的密码不一致'; return; }
+      const r = await api.req('/auth/register', { method: 'POST', body: JSON.stringify({ username: u, password: p }) });
+      api.token = r.token; localStorage.setItem('pe_token', r.token);
+      toast('注册成功，已自动登录'); state.loginMode = 'user';
+      boot(); return;
+    }
+    const r = await api.req('/auth/login', { method: 'POST', body: JSON.stringify({ username: u, password: p }) });
+    if (state.loginMode === 'admin' && r.role !== 'admin') {
+      $('#lgErr').textContent = '该账号不是管理员'; return;
+    }
     api.token = r.token;
     localStorage.setItem('pe_token', r.token);
+    state.adminConsole = state.loginMode === 'admin';
     boot();
-  } catch (e) { $('#lgErr').textContent = e.error || '登录失败'; }
+  } catch (e) { $('#lgErr').textContent = e.error || (state.loginMode === 'register' ? '注册失败' : '登录失败'); }
 }
 $('#lgBtn').onclick = doLogin;
 $('#lgPass').addEventListener('keydown', (e) => e.key === 'Enter' && doLogin());
-$('#lgAdmin').onclick = () => { $('#lgUser').focus(); toast('请使用管理员账号登录'); };
+$('#lgPass2').addEventListener('keydown', (e) => e.key === 'Enter' && doLogin());
+$('#lgAdmin').onclick = () => setLoginMode('admin');
+$('#lgBackUser').onclick = () => setLoginMode('user');
 $('#lgForgot').onclick = () => toast('请联系管理员重置密码');
-$('#lgReg').onclick = () => toast('注册功能未开放或请联系管理员');
+$('#lgReg').onclick = () => setLoginMode('register');
+$('#btnBackUser').onclick = () => { state.adminConsole = false; showView('dashboard'); };
 
 $('#btnLogout').onclick = () => { localStorage.removeItem('pe_token'); location.reload(); };
 $('#btnRefresh').onclick = () => showView(state.view);
@@ -109,12 +163,12 @@ async function boot() {
   $('#sideName').textContent = state.me.username;
   $('#topAvatar').textContent = initial;
   $('#sideAvatar').textContent = initial;
-  $('#sideRole').textContent = state.me.role === 'admin' ? '管理员工作台' : '用户工作台';
+  $('#sideRole').textContent = state.adminConsole ? '管理后台' : (state.me.role === 'admin' ? '用户视图（管理员）' : '用户工作台');
   state.mailboxes = (await api.req('/mailboxes')).items;
   state.mb = state.mailboxes[0] || null;
   if (state.mb) state.folders = (await api.req(`/mailboxes/${state.mb.id}/folders`)).items;
   renderNav();
-  showView(state.me.role === 'admin' ? 'dashboard' : 'dashboard');
+  showView(state.adminConsole && state.me.role === 'admin' ? 'admin' : 'dashboard');
   setInterval(async () => {
     if (state.view === 'inbox' && !state.q && state.folder) { await refreshFolders(); await loadMails(true); }
   }, 20000);
@@ -278,14 +332,44 @@ $('#cpSend').onclick = async () => {
 
 /* ---------- 邮箱管理 ---------- */
 async function loadMailboxes() {
-  await refreshFolders();
-  $('#mbCards').innerHTML = state.mailboxes.map((mb) => `
+  state.mailboxes = (await api.req('/mailboxes')).items;
+  const domains = (await api.req('/domains')).items;
+  $('#mbDomain').innerHTML = domains.map((d) =>
+    `<md-select-option value="${d.id}"><div slot="headline">${esc(d.domain)}</div></md-select-option>`).join('');
+  if (domains[0] && !$('#mbDomain').value) $('#mbDomain').value = String(domains[0].id);
+  const mbs = state.mailboxes;
+  $('#mbCards').innerHTML = mbs.length ? mbs.map((mb, i) => `
     <div class="mb-card"><h4><svg class="ic" style="color:var(--primary)"><use href="#i-mail"/></svg>
-      <code>${esc(mb.address)}</code>${mb.is_active ? '' : '<span class="chip warn">已停用</span>'}</h4>
+      <code>${esc(mb.address)}</code>${mb.is_active ? '' : '<span class="chip warn">已停用</span>'}
+      ${i === 0 ? '<span class="chip">默认</span>' : ''}</h4>
       <div class="badge-line">${state.folders.map((f) =>
-        `<span class="chip">${esc(f.name)} ${f.total} 封 / 未读 ${f.unread}</span>`).join('')}</div>
-    </div>`).join('');
+        `<span class="chip">${esc(f.name)} ${f.total} 封 / 未读 ${f.unread}</span>`).join('')}
+        <md-text-button data-toggle="${mb.id}" data-active="${mb.is_active ? 1 : 0}">
+          ${mb.is_active ? '停用' : '启用'}</md-text-button>
+        ${i === 0 ? '' : `<md-text-button data-use="${mb.id}">设为默认</md-text-button>`}
+      </div>
+    </div>`).join('') : '<p class="hint">暂无邮箱，请先创建</p>';
+  $('#mbCards').querySelectorAll('[data-toggle]').forEach((b) => b.onclick = async () => {
+    const active = b.dataset.active === '1';
+    await api.req(`/mailboxes/${b.dataset.toggle}`, { method: 'PATCH', body: JSON.stringify({ active: !active }) });
+    toast(active ? '已停用（暂停收发）' : '已启用'); loadMailboxes();
+  });
+  $('#mbCards').querySelectorAll('[data-use]').forEach((b) => b.onclick = async () => {
+    state.mb = state.mailboxes.find((x) => x.id === +b.dataset.use);
+    await refreshFolders();
+    toast('默认邮箱：' + state.mb.address); loadMailboxes();
+  });
 }
+$('#mbCreate').onclick = async () => {
+  const prefix = $('#mbPrefix').value.trim();
+  const domainId = +$('#mbDomain').value || 0;
+  try {
+    const r = await api.req('/mailboxes', { method: 'POST', body: JSON.stringify({ prefix, domain_id: domainId }) });
+    $('#mbPrefix').value = '';
+    toast('已创建 ' + r.address + '，密码与登录一致');
+    loadMailboxes();
+  } catch (e) { toast(e.error || '创建失败'); }
+};
 
 /* ---------- 规则（转发/验证码） ---------- */
 function ruleMbx(id) {
@@ -460,11 +544,8 @@ async function loadAdmTab() {
     const st2 = await api.req('/admin/settings');
     $('#regToggle').selected = st2.registration_enabled;
     const ports = (await api.req('/admin/ports')).items;
-    const names = { smtp_listen: 'SMTP 收信', smtp_submission: 'SMTP 提交(587)', smtp_tls: 'SMTPS(465)',
-      imap_listen: 'IMAP', imap_tls: 'IMAPS(993)', pop3_listen: 'POP3', pop3_tls: 'POP3S(995)' };
-    $('#portGrid').innerHTML = Object.keys(names).map((k) => `
-      <md-outlined-text-field data-port="${k}" label="${names[k]}" value="${esc(ports[k] || '')}"
-        placeholder=":25 / 留空关闭" style="width:100%"></md-outlined-text-field>`).join('');
+    // 结构已固化在 index.html（.port-item），此处仅填值
+    $$('#portGrid [data-port]').forEach((f) => { f.value = ports[f.dataset.port] || ''; });
   }
 }
 $('#regToggle').addEventListener('change', async (e) => {

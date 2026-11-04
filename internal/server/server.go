@@ -26,7 +26,7 @@ func New(db *sql.DB, cfg *config.Config, st *store.Store) *gin.Engine {
 	authed.GET("/me", auth.Me)
 	authed.POST("/me/password", auth.ChangePassword)
 
-	mail := &handlers.MailHandler{Store: st}
+	mail := &handlers.MailHandler{Store: st, Config: cfg}
 	authed.GET("/mailboxes", mail.Mailboxes)
 	authed.GET("/mailboxes/:id/folders", mail.Folders)
 	authed.GET("/folders/:id/mails", mail.List)
@@ -45,6 +45,9 @@ func New(db *sql.DB, cfg *config.Config, st *store.Store) *gin.Engine {
 	authed.POST("/admin/domains", mail.DomainAdd)
 	authed.GET("/admin/settings", mail.Settings)
 	authed.PUT("/admin/settings", mail.SettingsPut)
+	authed.GET("/domains", mail.DomainsList)
+	authed.POST("/mailboxes", mail.MailboxCreate)
+	authed.PATCH("/mailboxes/:id", mail.MailboxPatch)
 	authed.GET("/dashboard", mail.Dashboard)
 	authed.GET("/mailboxes/:id/rules", mail.Rules)
 	authed.POST("/mailboxes/:id/rules", mail.Rules)

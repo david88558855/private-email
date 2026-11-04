@@ -65,6 +65,7 @@
       <p class="login-sub">自托管邮件系统 · 安全 · 可控</p>
       <md-outlined-text-field id="lgUser" label="用户名" autocomplete="username" style="width:100%"></md-outlined-text-field>
       <md-outlined-text-field id="lgPass" label="密码" type="password" autocomplete="current-password" style="width:100%"></md-outlined-text-field>
+      <md-outlined-text-field id="lgPass2" label="确认密码" type="password" style="width:100%;display:none"></md-outlined-text-field>
       <div class="err" id="lgErr"></div>
       <md-filled-button id="lgBtn" style="width:100%">登 录</md-filled-button>
       <div class="login-links">
@@ -73,6 +74,7 @@
       </div>
       <div class="or-line"><span>或</span></div>
       <md-outlined-button id="lgAdmin" style="width:100%">管理员入口</md-outlined-button>
+      <md-outlined-button id="lgBackUser" style="width:100%;display:none">返回用户登录</md-outlined-button>
     </div>
   </div>
 </section>
@@ -136,6 +138,12 @@
     </section>
 
     <section class="view" id="v-mailboxes" hidden>
+      <div class="panel slim" style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap">
+        <md-outlined-text-field id="mbPrefix" label="邮箱前缀" supporting-text="小写字母/数字/-/_，2-32 位" style="min-width:220px"></md-outlined-text-field>
+        <md-filled-select id="mbDomain" label="域名" style="min-width:200px"></md-filled-select>
+        <md-filled-button id="mbCreate"><svg class="ic" slot="icon"><use href="#i-add"/></svg>创建邮箱</md-filled-button>
+      </div>
+      <p class="hint" style="margin:0 0 14px">新邮箱密码与 Web 登录一致，立即可用于收发；每个用户最多 10 个</p>
       <div id="mbCards"></div>
     </section>
 
@@ -188,6 +196,9 @@
     </section>
 
     <section class="view" id="v-admin" hidden>
+      <div style="display:flex;justify-content:flex-end;margin-bottom:8px">
+        <md-text-button id="btnBackUser"><svg class="ic" slot="icon"><use href="#i-person"/></svg>返回用户视图</md-text-button>
+      </div>
       <div class="seg" id="admTabs">
         <md-filled-tonal-button data-t="ov" class="on">概览</md-filled-tonal-button>
         <md-text-button data-t="users">用户</md-text-button>
@@ -210,7 +221,15 @@
         <div class="panel slim">
           <h4>协议端口</h4>
           <p class="hint">留空关闭该监听；保存后重启服务生效</p>
-          <div id="portGrid" class="port-grid"></div>
+          <div id="portGrid" class="port-grid">
+            <div class="port-item" data-pk="smtp_listen"><span>SMTP 收信</span><span class="port-desc">对外接收邮件（RFC 5321）</span><md-outlined-text-field data-port="smtp_listen" placeholder=":25" style="width:100%"></md-outlined-text-field></div>
+            <div class="port-item" data-pk="smtp_submission"><span>SMTP 提交</span><span class="port-desc">客户端发信（587）</span><md-outlined-text-field data-port="smtp_submission" placeholder=":587" style="width:100%"></md-outlined-text-field></div>
+            <div class="port-item" data-pk="smtp_tls"><span>SMTPS 隐式加密</span><span class="port-desc">SSL 直连发信（465）</span><md-outlined-text-field data-port="smtp_tls" placeholder=":465" style="width:100%"></md-outlined-text-field></div>
+            <div class="port-item" data-pk="imap_listen"><span>IMAP</span><span class="port-desc">客户端收信（143）</span><md-outlined-text-field data-port="imap_listen" placeholder=":143" style="width:100%"></md-outlined-text-field></div>
+            <div class="port-item" data-pk="imap_tls"><span>IMAPS 隐式加密</span><span class="port-desc">SSL 直连收信（993）</span><md-outlined-text-field data-port="imap_tls" placeholder=":993" style="width:100%"></md-outlined-text-field></div>
+            <div class="port-item" data-pk="pop3_listen"><span>POP3</span><span class="port-desc">客户端收信（110）</span><md-outlined-text-field data-port="pop3_listen" placeholder=":110" style="width:100%"></md-outlined-text-field></div>
+            <div class="port-item" data-pk="pop3_tls"><span>POP3S 隐式加密</span><span class="port-desc">SSL 直连（995）</span><md-outlined-text-field data-port="pop3_tls" placeholder=":995" style="width:100%"></md-outlined-text-field></div>
+          </div>
           <md-filled-button id="portSave" style="margin-top:10px">保存端口设置</md-filled-button>
         </div>
       </div>

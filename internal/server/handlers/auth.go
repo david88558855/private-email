@@ -48,8 +48,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "用户名或密码错误"})
 		return
 	}
-	claims := jwt.MapClaims{"uid": id, "role": role, "exp": time.Now().Add(24 * time.Hour).Unix()}
-	tok, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString([]byte(h.Config.Security.JWTSecret))
+	tok, err := newJWT(h, id, req.Username, role)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "服务异常"})
 		return
@@ -57,6 +56,16 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	h.DB.Exec(`INSERT INTO audit_logs(user_id, action, ip) VALUES(?,?,?)`,
 		id, "login", c.ClientIP())
 	c.JSON(http.StatusOK, gin.H{"token": tok, "role": role})
+}
+
+// newJWT 统一签发。
+func newJWT(h *AuthHandler, uid int64, username, role string) (string, error) {
+	claims := jwt.MapClaims{
+		"uid":  uid,
+		"role": role,
+		"exp":  time.Now().Add(24 * time.Hour).Unix(),
+	}
+	return jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString([]byte(h.Config.Security.JWTSecret))
 }
 
 // Me 当前登录用户信息。

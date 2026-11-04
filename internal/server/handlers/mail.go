@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"database/sql"
+	"github.com/david88558855/private-email/internal/config"
 	"net/http"
 	"strconv"
 
@@ -11,7 +12,8 @@ import (
 )
 
 type MailHandler struct {
-	Store *store.Store
+	Store  *store.Store
+	Config *config.Config
 }
 
 // Mailboxes GET /api/v1/mailboxes

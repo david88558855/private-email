@@ -4,9 +4,11 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/david88558855/private-email/internal/outbound"
 	"github.com/gin-gonic/gin"
+	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -234,7 +236,15 @@ func (h *MailHandler) Register(c *gin.Context) {
 			uid, req.Username+"@"+domain, domainID, string(hash))
 	}
 	h.Store.DB.Exec(`INSERT INTO audit_logs(user_id, action, ip) VALUES(?, 'register', ?)`, uid, c.ClientIP())
-	c.JSON(http.StatusOK, gin.H{"ok": true, "address": req.Username + "@" + domain})
+	// 注册即登录：签发 token
+	claims := jwt.MapClaims{"uid": uid, "role": "user", "exp": time.Now().Add(24 * time.Hour).Unix()}
+	token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).
+		SignedString([]byte(h.Config.Security.JWTSecret))
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"ok": true, "address": req.Username + "@" + domain})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"ok": true, "address": req.Username + "@" + domain, "token": token, "role": "user"})
 }
 
 // AppPasswords GET/POST/DELETE /api/v1/mailboxes/:id/app_passwords（D2）
