@@ -27,7 +27,7 @@ Go 1.27.3 · Gin · modernc.org/sqlite（纯 Go，无 CGO）· 前端 go:embed �
 首次启动：
 
 1. 自动建库、生成默认 `data/config.yaml`、自签 TLS 证书
-2. 创建管理员 `admin`，默认密码 `adnin`（请立即登录并修改）
+2. 创建管理员 `admin`，默认密码 `admin`（请立即登录并修改）
 3. 默认域名 `local.test` 自动创建；Web 端口 `:8080`
 
 生产部署（假设域名 mail.example.com，服务器 IP 可达）：
