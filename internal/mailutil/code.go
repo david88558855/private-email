@@ -26,10 +26,16 @@ func ExtractCode(text string, custom *sql.Rows) string {
 		for custom.Next() {
 			var pat string
 			if custom.Scan(&pat) == nil {
-				if re, err := regexp.Compile(pat); err == nil {
-					if m := re.FindStringSubmatch(text); len(m) > 1 {
-						return m[1]
-					}
+				// ReDoS 防护：限制模式长度与输入长度（Go regexp 无 ctx API）
+				if len(pat) > 128 || len(text) > 4096 {
+					continue
+				}
+				re, err := regexp.Compile(pat)
+				if err != nil {
+					continue
+				}
+				if m := re.FindStringSubmatch(text); len(m) > 1 {
+					return m[1]
 				}
 			}
 		}

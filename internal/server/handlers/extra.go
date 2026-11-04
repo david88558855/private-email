@@ -3,7 +3,6 @@ package handlers
 import (
 	"net/http"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/david88558855/private-email/internal/store"
@@ -64,7 +63,7 @@ func (h *MailHandler) Dashboard(c *gin.Context) {
 }
 
 func timeShift(back int) string {
-	return strings.Split(strings.ReplaceAll(nowLocal(-back), " ", "T"), "T")[0]
+	return time.Now().AddDate(0, 0, -back).Format("2006-01-02")
 }
 
 // Rules GET/POST/DELETE /api/v1/mailboxes/:id/rules?kind=forward|verif
@@ -145,9 +144,4 @@ func (h *MailHandler) Rules(c *gin.Context) {
 		}
 		c.JSON(http.StatusOK, gin.H{"ok": true})
 	}
-}
-
-// nowLocal 返回 n 天前的本地日期（SQLite 兼容格式）。
-func nowLocal(back int) string {
-	return strings.Replace(time.Now().AddDate(0, 0, -back).Format("2006-01-02 15:04:05"), "T", " ", 1)
 }
