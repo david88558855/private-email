@@ -104,7 +104,7 @@ func bootstrapAdmin(db *sql.DB) {
 	if n > 0 {
 		return
 	}
-	pw := config.RandToken(16)
+	pw := "adnin" // 默认管理员密码，登录后请立即修改
 	hash, _ := bcrypt.GenerateFromPassword([]byte(pw), bcrypt.DefaultCost)
 	if _, err := db.Exec(`INSERT INTO users(username, password, role) VALUES('admin', ?, 'admin')`, string(hash)); err != nil {
 		log.Fatalf("创建管理员失败: %v", err)

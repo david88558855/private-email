@@ -5,265 +5,300 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Private Email</title>
 <link rel="stylesheet" href="style.css">
-<script type="importmap">
-{
-  "imports": {
-    "@material/web/": "./vendor/material/",
-    "tslib": "./vendor/tslib/tslib.es6.js",
-    "@lit/reactive-element": "./vendor/@lit/reactive-element/reactive-element.js",
-    "@lit/reactive-element/": "./vendor/@lit/reactive-element/",
-    "lit-html": "./vendor/lit-html/lit-html.js",
-    "lit-html/": "./vendor/lit-html/",
-    "lit-element/lit-element.js": "./vendor/lit-element/lit-element.js",
-    "lit-html/is-server.js": "./vendor/lit-html/is-server.js",
-    "lit": "./vendor/lit/index.js",
-    "lit/": "./vendor/lit/",
-    "lit/directives/": "./vendor/lit-html/directives/",
-    "lit/static-html.js": "./vendor/lit-html/static-html.js",
-    "@lit/reactive-element/decorators/": "./vendor/@lit/reactive-element/decorators/"
-  }
-}
-</script>
-<script type="module">
-  import './vendor/material/all.js';
-</script>
 </head>
 <body>
-<svg xmlns="http://www.w3.org/2000/svg" style="display:none" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><symbol id="i-dash" viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="7" height="7" rx="1.8"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.8"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.8"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.8"/></symbol>
-  <symbol id="i-mail" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M3.5 7.5l8.5 6 8.5-6"/></symbol>
-  <symbol id="i-inbox" viewBox="0 0 24 24"><rect x="4" y="4.5" width="16" height="15" rx="2.5"/><path d="M4 13h4.5l1.5 2.5h4L15.5 13H20"/></symbol>
-  <symbol id="i-send" viewBox="0 0 24 24"><path d="M3.5 11.2L20.5 3.8l-7.4 17-2.6-7z"/><path d="M20.5 3.8L10.5 13.8"/></symbol>
-  <symbol id="i-fwd" viewBox="0 0 24 24"><path d="M4 12h13"/><path d="M12 6.5l5.5 5.5-5.5 5.5"/></symbol>
-  <symbol id="i-key" viewBox="0 0 24 24"><circle cx="8" cy="12" r="3.6"/><path d="M11.6 12H20"/><path d="M17 12v3"/><path d="M20 12v2.4"/></symbol>
-  <symbol id="i-tune" viewBox="0 0 24 24"><path d="M4 8h8"/><circle cx="15.5" cy="8" r="2.4"/><path d="M20 8h-1"/><path d="M4 16h1"/><circle cx="8.5" cy="16" r="2.4"/><path d="M20 16h-8"/></symbol>
-  <symbol id="i-users" viewBox="0 0 24 24"><circle cx="9" cy="8.2" r="3.2"/><path d="M3.4 19.5c.8-3.2 3-4.8 5.6-4.8s4.8 1.6 5.6 4.8"/><circle cx="17" cy="9.2" r="2.5"/><path d="M16.2 14.9c2 .2 3.6 1.6 4.2 4.2"/></symbol>
-  <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><ellipse cx="12" cy="12" rx="3.8" ry="8.5"/><path d="M3.5 12h17"/></symbol>
-  <symbol id="i-mon" viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="11.5" rx="1.8"/><path d="M9 20h6"/><path d="M12 16v4"/></symbol>
-  <symbol id="i-out" viewBox="0 0 24 24"><path d="M10 4.5H5.5v15H10"/><path d="M13.5 8l4 4-4 4"/><path d="M17.5 12h-9"/></symbol>
-  <symbol id="i-add" viewBox="0 0 24 24"><path d="M12 5.5v13"/><path d="M5.5 12h13"/></symbol>
-  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="M15.6 15.6L20 20"/></symbol>
-  <symbol id="i-del" viewBox="0 0 24 24"><path d="M5 7h14"/><path d="M9.5 7V5h5v2"/><path d="M7 7l1 13h8l1-13"/><path d="M10.3 11v5.5"/><path d="M13.7 11v5.5"/></symbol>
-  <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.6l4.4 4.4L19 7.4"/></symbol>
-  <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6.5A2.5 2.5 0 017.5 4H15"/></symbol>
-  <symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6l12 12"/><path d="M18 6L6 18"/></symbol>
-  <symbol id="i-more" viewBox="0 0 24 24"><circle class="f" cx="5.5" cy="12" r="1.6"/><circle class="f" cx="12" cy="12" r="1.6"/><circle class="f" cx="18.5" cy="12" r="1.6"/></symbol>
-  <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3.5l7 2.8v5.2c0 4.8-3.4 7.7-7 9.5-3.6-1.8-7-4.7-7-9.5V6.3z"/><path d="M9 12l2.2 2.2L15.5 9.8"/></symbol>
-  <symbol id="i-att" viewBox="0 0 24 24"><path d="M7.5 13.2l6.3-6.3a3.4 3.4 0 014.8 4.8l-7.2 7.2a5.2 5.2 0 01-7.4-7.4L11.2 4.3"/></symbol>
-  <symbol id="i-reply" viewBox="0 0 24 24"><path d="M9.5 7.5L4.5 12l5 4.5"/><path d="M4.5 12h9.5a5.5 5.5 0 015.5 5.5v1"/></symbol>
-  <symbol id="i-person" viewBox="0 0 24 24"><circle cx="12" cy="8.2" r="3.5"/><path d="M4.8 20c1-4 4.1-5.6 7.2-5.6s6.2 1.6 7.2 5.6"/></symbol>
-  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3.2 2"/></symbol>
-  <symbol id="i-contrast" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path class="f" d="M12 3.5a8.5 8.5 0 010 17z"/></symbol>
-  <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 12a8 8 0 11-2.3-5.6"/><path d="M20 3.5V8h-4.5"/></symbol>
-  <symbol id="i-edit" viewBox="0 0 24 24"><path d="M4 20h4.5L20 8.5a2.6 2.6 0 00-3.7-3.7L4.5 16.5z"/><path d="M14.5 6.5l3 3"/></symbol>
-</svg></svg>
-<!-- ============ 登录 ============ -->
-<section class="view" id="v-login">
-  <div class="login-wrap">
-    <div class="login-card">
-      <div class="logo-block"><svg class="ic logo-ic"><use href="#i-mail"/></svg></div>
-      <h1>Private Email</h1>
-      <p class="login-sub">自托管邮件系统 · 安全 · 可控</p>
-      <md-outlined-text-field id="lgUser" label="用户名" autocomplete="username" style="width:100%"></md-outlined-text-field>
-      <md-outlined-text-field id="lgPass" label="密码" type="password" autocomplete="current-password" style="width:100%"></md-outlined-text-field>
-      <md-outlined-text-field id="lgPass2" label="确认密码" type="password" style="width:100%;display:none"></md-outlined-text-field>
-      <div class="err" id="lgErr"></div>
-      <md-filled-button id="lgBtn" style="width:100%">登 录</md-filled-button>
-      <div class="login-links">
-        <a href="javascript:void 0" id="lgReg" style="display:none">注册账号</a>
-        <a href="javascript:void 0" id="lgForgot">忘记密码？</a>
-      </div>
-      <div class="or-line"><span>或</span></div>
-      <md-outlined-button id="lgAdmin" style="width:100%">管理员入口</md-outlined-button>
-      <md-outlined-button id="lgBackUser" style="width:100%;display:none">返回用户登录</md-outlined-button>
+<svg xmlns="http://www.w3.org/2000/svg" style="display:none" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+<symbol id="i-mail" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="M3.5 7.5l8.5 6 8.5-6"/></symbol>
+<symbol id="i-dash" viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="7" height="7" rx="2"/><rect x="13.5" y="3.5" width="7" height="7" rx="2"/><rect x="3.5" y="13.5" width="7" height="7" rx="2"/><rect x="13.5" y="13.5" width="7" height="7" rx="2"/></symbol>
+<symbol id="i-inbox" viewBox="0 0 24 24"><rect x="4" y="4.5" width="16" height="15" rx="3"/><path d="M4 13h4.5l1.5 2.5h4L15.5 13H20"/></symbol>
+<symbol id="i-send" viewBox="0 0 24 24"><path d="M4 12l16-7-6.5 16-2.5-6.5z"/><path d="M11 14.5L20 5"/></symbol>
+<symbol id="i-key" viewBox="0 0 24 24"><circle cx="8.5" cy="8.5" r="4.5"/><path d="M12 12l8 8M17 17l2-2M14.5 14.5l2-2"/></symbol>
+<symbol id="i-tune" viewBox="0 0 24 24"><path d="M5 4v6M5 14v6M12 4v10M12 18v2M19 4v2M19 10v10M3 10h4M10 14h4M17 6h4"/></symbol>
+<symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3l7 3v6c0 4.4-3 7.4-7 9-4-1.6-7-4.6-7-9V6z"/><path d="M9.5 12l2 2 3.5-3.5"/></symbol>
+<symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.6 2.4 4 5.2 4 8.5s-1.4 6.1-4 8.5c-2.6-2.4-4-5.2-4-8.5s1.4-6.1 4-8.5z"/></symbol>
+<symbol id="i-users" viewBox="0 0 24 24"><circle cx="9" cy="8.5" r="3.5"/><path d="M3.5 20c.8-3.2 3-5 5.5-5s4.7 1.8 5.5 5M16 5.6a3.5 3.5 0 010 5.8M17.5 15.4c2 .6 3.4 2.2 4 4.6"/></symbol>
+<symbol id="i-mon" viewBox="0 0 24 24"><path d="M4 19V9M9.3 19V5M14.7 19v-8M20 19V7"/></symbol>
+<symbol id="i-out" viewBox="0 0 24 24"><path d="M14 4H6.5A2.5 2.5 0 004 6.5v11A2.5 2.5 0 006.5 20H14M10 12h10M17 8.5l3.5 3.5-3.5 3.5"/></symbol>
+<symbol id="i-add" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+<symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.2-4.2"/></symbol>
+<symbol id="i-del" viewBox="0 0 24 24"><path d="M4 7h16M9.5 7V5h5v2M6.5 7l1 13h9l1-13M10 11v5M14 11v5"/></symbol>
+<symbol id="i-att" viewBox="0 0 24 24"><path d="M20 11.5l-8 8a5.3 5.3 0 01-7.5-7.5l8-8a3.5 3.5 0 015 5l-8 8a1.8 1.8 0 01-2.5-2.5l7-7"/></symbol>
+<symbol id="i-person" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4.5 20.5c1.2-3.8 4-5.5 7.5-5.5s6.3 1.7 7.5 5.5"/></symbol>
+<symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7v5l3.5 2"/></symbol>
+<symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 13.5A8 8 0 1110.5 4 6.5 6.5 0 0020 13.5z"/></symbol>
+<symbol id="i-refresh" viewBox="0 0 24 24"><path d="M4 12a8 8 0 0113.6-5.7L20 8.5M20 4v4.5h-4.5M20 12a8 8 0 01-13.6 5.7L4 15.5M4 20v-4.5h4.5"/></symbol>
+<symbol id="i-edit" viewBox="0 0 24 24"><path d="M4 20h4L19 9a2.5 2.5 0 00-3.5-3.5L4.5 16.5z"/></symbol>
+<symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></symbol>
+<symbol id="i-fwd" viewBox="0 0 24 24"><path d="M4 12h13M13 6l6 6-6 6"/><circle cx="4" cy="12" r="2"/></symbol>
+<symbol id="i-copy" viewBox="0 0 24 24"><rect x="8.5" y="8.5" width="12" height="12" rx="2.5"/><path d="M15.5 8.5v-3a2.5 2.5 0 00-2.5-2.5H6A2.5 2.5 0 003.5 5.5V14A2.5 2.5 0 006 16.5h3"/></symbol>
+</svg>
+
+<!-- ==================== 登录页 ==================== -->
+<div id="login">
+  <div class="login-left">
+    <div class="mark">
+      <div class="logo"><svg><use href="#i-mail"/></svg></div>
+      <div><h1>Private Email</h1><span style="font-size:13px;opacity:.8">自托管邮件系统</span></div>
+    </div>
+    <p>单文件部署 · SMTP / IMAP / POP3 全协议 · 内置 Web 客户端与管理后台 · 数据完全自持。验证码自动提取、全文检索、DKIM 签名，开箱即用。</p>
+    <div class="feats">
+      <div><svg><use href="#i-shield"/></svg>自持数据</div>
+      <div><svg><use href="#i-key"/></svg>验证码提取</div>
+      <div><svg><use href="#i-globe"/></svg>多域名</div>
+      <div><svg><use href="#i-mon"/></svg>实时监控</div>
     </div>
   </div>
-</section>
+  <div class="login-right">
+    <div class="login-card">
+      <h2 id="lgTitle">欢迎回来</h2>
+      <p class="sub" id="lgSub">登录你的邮箱工作台</p>
+      <div class="field"><label>用户名</label><input id="lgUser" placeholder="用户名" autocomplete="username"></div>
+      <div class="field"><label>密码</label><input id="lgPass" type="password" placeholder="密码" autocomplete="current-password"></div>
+      <div class="field" id="lgPass2Wrap" style="display:none"><label>确认密码</label><input id="lgPass2" type="password" placeholder="再次输入密码"></div>
+      <div class="err" id="lgErr"></div>
+      <button class="btn filled" id="lgBtn" onclick="doLogin()">登 录</button>
+      <div class="login-links">
+        <a href="javascript:void 0" id="lgReg" onclick="setMode('register')" style="display:none">注册账号</a>
+        <a href="javascript:void 0" id="lgForgot" onclick="toast('请联系管理员重置密码')">忘记密码？</a>
+      </div>
+      <button class="btn text" id="lgBack" style="display:none" onclick="setMode('user')">← 返回登录</button>
+      <div class="login-tip">默认管理员 <b>admin / adnin</b>（首次登录请修改）· 服务端口 <b>9000</b></div>
+    </div>
+  </div>
+</div>
 
-<!-- ============ 应用外壳 ============ -->
-<div id="shell" style="display:none">
+<!-- ==================== 应用外壳 ==================== -->
+<div id="app">
   <aside class="sidebar">
-    <div class="side-logo">
-      <div class="logo-block sm"><svg class="ic logo-ic"><use href="#i-mail"/></svg></div>
-      <div><div class="side-title">Private Email</div><div class="side-sub" id="sideRole">用户工作台</div></div>
+    <div class="side-brand">
+      <div class="logo"><svg><use href="#i-mail"/></svg></div>
+      <div><b>Private Email</b><span id="sideRole">用户工作台</span></div>
     </div>
     <nav id="sideNav"></nav>
-    <div class="side-user">
+    <div class="side-foot">
       <div class="avatar" id="sideAvatar">?</div>
-      <div style="flex:1;min-width:0"><div class="su-name" id="sideName"></div><div class="su-mail" id="sideMail"></div></div>
-      <md-icon-button id="btnLogout" title="退出登录"><svg class="ic"><use href="#i-out"/></svg></md-icon-button>
+      <div class="who"><b id="sideName"></b><span id="sideMail"></span></div>
+      <button class="iconbtn" title="退出登录" onclick="logout()"><svg><use href="#i-out"/></svg></button>
     </div>
   </aside>
   <div class="main">
     <header class="topbar">
-      <h2 id="viewTitle"></h2>
+      <h2 id="viewTitle">仪表板</h2>
       <div class="top-actions">
-        <md-icon-button id="btnTheme" title="主题"><svg class="ic"><use href="#i-contrast"/></svg></md-icon-button>
-        <md-icon-button id="btnRefresh" title="刷新"><svg class="ic"><use href="#i-refresh"/></svg></md-icon-button>
-        <div class="avatar sm" id="topAvatar">?</div>
+        <button class="iconbtn" title="刷新" onclick="showView(state.view)"><svg><use href="#i-refresh"/></svg></button>
+        <button class="iconbtn" id="themeBtn" title="深色模式" onclick="toggleTheme()"><svg><use href="#i-moon"/></svg></button>
       </div>
     </header>
-    <main id="content">
+    <main class="content"><div class="wrap">
 
-    <section class="view" id="v-dashboard" hidden>
-      <h3 class="greet" id="greet"></h3>
-      <p class="greet-sub" id="greetSub"></p>
-      <div class="stat-grid">
-        <div class="stat-card"><span>邮箱总数</span><b id="stMb">0</b><i id="stMbSub">自托管</i></div>
-        <div class="stat-card"><span>今日收到</span><b id="stToday">0</b><i>全部邮箱合计</i></div>
-        <div class="stat-card"><span>未读邮件</span><b id="stUnread">0</b><i id="stUnreadSub"></i></div>
-        <div class="stat-card"><span>存储用量</span><b id="stStore">0B</b><i id="stStoreSub"></i>
-          <md-linear-progress id="stBar" value="0"></md-linear-progress></div>
-      </div>
-      <div class="dash-row">
-        <div class="panel"><h4>近 7 日收件趋势 <em id="trendScope">全部邮箱合计</em></h4>
-          <div class="trend" id="trendChart"></div></div>
-        <div class="panel"><h4>最近邮件</h4><div id="dashRecent"></div></div>
-      </div>
-    </section>
+      <!-- ===== 仪表板 ===== -->
+      <section class="view on" id="v-dashboard">
+        <div class="greet" id="greet"></div>
+        <div class="greet-sub" id="greetSub"></div>
+        <div class="stat-grid">
+          <div class="stat-card"><div class="k"><svg><use href="#i-mail"/></svg>邮箱总数</div><div class="v" id="stMb">0</div><div class="s" id="stMbSub">自托管</div></div>
+          <div class="stat-card"><div class="k"><svg><use href="#i-inbox"/></svg>今日收到</div><div class="v" id="stToday">0</div><div class="s">全部邮箱合计</div></div>
+          <div class="stat-card"><div class="k"><svg><use href="#i-clock"/></svg>未读邮件</div><div class="v" id="stUnread">0</div><div class="s" id="stUnreadSub"></div></div>
+          <div class="stat-card"><div class="k"><svg><use href="#i-att"/></svg>存储用量</div><div class="v" id="stStore">0</div><div class="s">全部邮件占用</div></div>
+        </div>
+        <div class="dash-row">
+          <div class="panel"><h4>近 7 日收件趋势<em>全部邮箱合计</em></h4><div class="trend" id="trendChart"></div></div>
+          <div class="panel"><h4>最近邮件</h4><div id="recentList"></div></div>
+        </div>
+      </section>
 
-    <section class="view" id="v-inbox" hidden>
-      <div class="inbox-tools">
-        <md-outlined-text-field id="q" placeholder="搜索邮件、发件人、验证码…" style="flex:1;max-width:420px"></md-outlined-text-field>
-        <div class="seg" id="segFilter">
-          <md-filled-tonal-button data-f="all" class="on">全部</md-filled-tonal-button>
-          <md-text-button data-f="unread">未读</md-text-button>
-        </div>
-        <span class="list-meta" id="listMeta"></span>
-      </div>
-      <div class="inbox-grid">
-        <div class="maillist" id="mailList"></div>
-        <div class="reader" id="reader"><div class="reader-empty">选择左侧邮件查看</div></div>
-      </div>
-      <md-fab id="fabCompose" aria-label="写信"><svg class="ic" slot="icon"><use href="#i-edit"/></svg><span slot="label">写 信</span></md-fab>
-    </section>
-
-    <section class="view" id="v-mailboxes" hidden>
-      <div class="panel slim" style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap">
-        <md-outlined-text-field id="mbPrefix" label="邮箱前缀" supporting-text="小写字母/数字/-/_，2-32 位" style="min-width:220px"></md-outlined-text-field>
-        <md-filled-select id="mbDomain" label="域名" style="min-width:200px"></md-filled-select>
-        <md-filled-button id="mbCreate"><svg class="ic" slot="icon"><use href="#i-add"/></svg>创建邮箱</md-filled-button>
-      </div>
-      <p class="hint" style="margin:0 0 14px">新邮箱密码与 Web 登录一致，立即可用于收发；每个用户最多 10 个</p>
-      <div id="mbCards"></div>
-    </section>
-
-    <section class="view" id="v-forward" hidden>
-      <div class="panel slim">
-        <div class="rule-tools">
-          <md-filled-select id="fwMbx" label="选择邮箱" style="width:280px"></md-filled-select>
-        </div>
-        <div class="rule-add">
-          <md-outlined-text-field id="fwTarget" label="转发目标邮箱" type="email" style="flex:1;max-width:320px"></md-outlined-text-field>
-          <md-filled-button id="fwAdd"><svg class="ic" slot="icon"><use href="#i-add"/></svg>添加规则</md-filled-button>
-        </div>
-        <md-list id="fwList" class="rule-list"></md-list>
-      </div>
-    </section>
-
-    <section class="view" id="v-verif" hidden>
-      <div class="panel slim">
-        <div class="rule-tools">
-          <md-filled-select id="vfMbx" label="选择邮箱" style="width:280px"></md-filled-select>
-        </div>
-        <div class="rule-add">
-          <md-outlined-text-field id="vfName" label="规则名称" style="max-width:160px"></md-outlined-text-field>
-          <md-outlined-text-field id="vfPattern" label="验证码正则（含捕获组）" style="flex:1;max-width:360px"></md-outlined-text-field>
-          <md-filled-button id="vfAdd"><svg class="ic" slot="icon"><use href="#i-add"/></svg>添加规则</md-filled-button>
-        </div>
-        <md-list id="vfList" class="rule-list"></md-list>
-      </div>
-    </section>
-
-    <section class="view" id="v-settings" hidden>
-      <div class="panel slim">
-        <h4>修改密码</h4>
-        <p class="hint">修改后 SMTP / IMAP / POP3 客户端密码同步更新（保持与 Web 登录一致）</p>
-        <div class="rule-add">
-          <md-outlined-text-field id="pwOld" label="当前密码" type="password" style="max-width:220px"></md-outlined-text-field>
-          <md-outlined-text-field id="pwNew" label="新密码（至少 6 位）" type="password" style="max-width:220px"></md-outlined-text-field>
-          <md-filled-button id="pwSave">保存</md-filled-button>
-        </div>
-      </div>
-      <div class="panel slim">
-        <h4>App 专用密码</h4>
-        <p class="hint">为第三方客户端生成独立密码，随时可撤销；与 Web 密码相互独立</p>
-        <div class="rule-add">
-          <md-outlined-text-field id="apLabel" label="用途备注（如 Thunderbird）" style="flex:1;max-width:280px"></md-outlined-text-field>
-          <md-filled-tonal-button id="apAdd"><svg class="ic" slot="icon"><use href="#i-add"/></svg>生成</md-filled-button>
-        </div>
-        <md-list id="apList" class="rule-list"></md-list>
-      </div>
-    </section>
-
-    <section class="view" id="v-admin" hidden>
-      <div style="display:flex;justify-content:flex-end;margin-bottom:8px">
-        <md-text-button id="btnBackUser"><svg class="ic" slot="icon"><use href="#i-person"/></svg>返回用户视图</md-text-button>
-      </div>
-      <div class="seg" id="admTabs">
-        <md-filled-tonal-button data-t="ov" class="on">概览</md-filled-tonal-button>
-        <md-text-button data-t="users">用户</md-text-button>
-        <md-text-button data-t="domains">域名</md-text-button>
-        <md-text-button data-t="queue">投递队列</md-text-button>
-        <md-text-button data-t="conf">设置</md-text-button>
-      </div>
-      <div id="admOv" class="adm-sec"></div>
-      <div id="admUsers" class="adm-sec" hidden></div>
-      <div id="admDomains" class="adm-sec" hidden></div>
-      <div id="admQueue" class="adm-sec" hidden></div>
-      <div id="admConf" class="adm-sec" hidden>
-        <div class="panel slim">
-          <h4>注册</h4>
-          <label class="switch-row">开放注册
-            <md-switch id="regToggle" icons></md-switch>
-          </label>
-          <p class="hint">关闭时登录页不可自行注册，仅管理员创建用户</p>
-        </div>
-        <div class="panel slim">
-          <h4>协议端口</h4>
-          <p class="hint">留空关闭该监听；保存后重启服务生效</p>
-          <div id="portGrid" class="port-grid">
-            <div class="port-item" data-pk="smtp_listen"><span>SMTP 收信</span><span class="port-desc">对外接收邮件（RFC 5321）</span><md-outlined-text-field data-port="smtp_listen" placeholder=":25" style="width:100%"></md-outlined-text-field></div>
-            <div class="port-item" data-pk="smtp_submission"><span>SMTP 提交</span><span class="port-desc">客户端发信（587）</span><md-outlined-text-field data-port="smtp_submission" placeholder=":587" style="width:100%"></md-outlined-text-field></div>
-            <div class="port-item" data-pk="smtp_tls"><span>SMTPS 隐式加密</span><span class="port-desc">SSL 直连发信（465）</span><md-outlined-text-field data-port="smtp_tls" placeholder=":465" style="width:100%"></md-outlined-text-field></div>
-            <div class="port-item" data-pk="imap_listen"><span>IMAP</span><span class="port-desc">客户端收信（143）</span><md-outlined-text-field data-port="imap_listen" placeholder=":143" style="width:100%"></md-outlined-text-field></div>
-            <div class="port-item" data-pk="imap_tls"><span>IMAPS 隐式加密</span><span class="port-desc">SSL 直连收信（993）</span><md-outlined-text-field data-port="imap_tls" placeholder=":993" style="width:100%"></md-outlined-text-field></div>
-            <div class="port-item" data-pk="pop3_listen"><span>POP3</span><span class="port-desc">客户端收信（110）</span><md-outlined-text-field data-port="pop3_listen" placeholder=":110" style="width:100%"></md-outlined-text-field></div>
-            <div class="port-item" data-pk="pop3_tls"><span>POP3S 隐式加密</span><span class="port-desc">SSL 直连（995）</span><md-outlined-text-field data-port="pop3_tls" placeholder=":995" style="width:100%"></md-outlined-text-field></div>
+      <!-- ===== 收件箱 ===== -->
+      <section class="view" id="v-inbox">
+        <div class="inbox-tools">
+          <div class="search"><svg><use href="#i-search"/></svg><input id="q" placeholder="搜索邮件、发件人、验证码…"></div>
+          <div class="seg" id="segFilter">
+            <button class="on" onclick="setFilter(this,'all')">全部</button>
+            <button onclick="setFilter(this,'unread')">未读</button>
           </div>
-          <md-filled-button id="portSave" style="margin-top:10px">保存端口设置</md-filled-button>
+          <span class="list-meta" id="listMeta"></span>
         </div>
-      </div>
-    </section>
+        <div class="inbox-grid">
+          <div class="mailpanel">
+            <div class="hd" id="mailPanelHd"><svg style="color:var(--primary)"><use href="#i-inbox"/></svg>收件箱<span class="badge">0</span></div>
+            <div class="folder-strip" id="folderStrip"></div>
+            <div class="maillist" id="mailList"></div>
+          </div>
+          <div class="reader" id="reader">
+            <div class="empty"><svg><use href="#i-mail"/></svg>选择左侧邮件查看内容</div>
+          </div>
+        </div>
+      </section>
 
-    </main>
+      <!-- ===== 邮箱管理 ===== -->
+      <section class="view" id="v-mailboxes">
+        <div class="panel" style="margin-bottom:16px">
+          <h4 style="margin-bottom:14px"><svg style="color:var(--primary)"><use href="#i-add"/></svg>创建新邮箱</h4>
+          <div class="row">
+            <div class="field" style="flex:1;min-width:220px"><label>邮箱前缀</label><input id="mbPrefix" placeholder="小写字母 / 数字 / - / _ · 2-32 位"></div>
+            <div class="field" style="min-width:200px"><label>域名</label><select id="mbDomain"></select></div>
+            <button class="btn filled" style="height:40px" onclick="createMailbox()">创建邮箱</button>
+          </div>
+        </div>
+        <div id="mbCards"></div>
+      </section>
+
+      <!-- ===== 转发规则 ===== -->
+      <section class="view" id="v-forward">
+        <div class="form-page">
+          <div class="panel" style="margin-bottom:16px">
+            <h4 style="margin-bottom:14px"><svg style="color:var(--primary)"><use href="#i-fwd"/></svg>添加转发规则</h4>
+            <div class="row">
+              <div class="field" style="flex:1;min-width:240px"><label>选择邮箱</label><select id="fwMbx"></select></div>
+              <div class="field" style="flex:1;min-width:240px"><label>转发目标地址</label><input id="fwTarget" type="email" placeholder="me@gmail.com"></div>
+              <button class="btn filled" onclick="addRule('forward')">添加规则</button>
+            </div>
+          </div>
+          <div class="rule-list" id="fwList"></div>
+        </div>
+      </section>
+
+      <!-- ===== 验证码规则 ===== -->
+      <section class="view" id="v-verif">
+        <div class="form-page">
+          <div class="panel" style="margin-bottom:16px">
+            <h4 style="margin-bottom:14px"><svg style="color:var(--primary)"><use href="#i-key"/></svg>自定义验证码提取规则</h4>
+            <div class="row">
+              <div class="field" style="min-width:180px"><label>规则名称</label><input id="vfName" placeholder="GitHub 登录码"></div>
+              <div class="field" style="flex:1;min-width:280px"><label>正则表达式（含捕获组）</label><input id="vfPattern" placeholder="(?:code is)[:\s]+([0-9]{6})"></div>
+              <button class="btn filled" onclick="addRule('verif')">添加规则</button>
+            </div>
+            <p class="hint" style="margin:10px 0 0">匹配顺序：邮箱规则 → 全局规则 → 内置规则；正则超长或危险模式会被拒绝。</p>
+          </div>
+          <div class="rule-list" id="vfList"></div>
+        </div>
+      </section>
+
+      <!-- ===== 账号设置 ===== -->
+      <section class="view" id="v-settings">
+        <div class="form-page">
+          <div class="panel" style="margin-bottom:16px">
+            <h4 style="margin-bottom:6px">修改密码</h4>
+            <p class="hint" style="margin-bottom:14px">修改后 SMTP / IMAP / POP3 客户端密码<b>自动同步</b>，第三方客户端无需重新配置。</p>
+            <div class="row">
+              <div class="field" style="flex:1;min-width:200px"><label>当前密码</label><input id="pwOld" type="password"></div>
+              <div class="field" style="flex:1;min-width:200px"><label>新密码（至少 6 位）</label><input id="pwNew" type="password"></div>
+              <button class="btn filled" onclick="savePassword()">保存</button>
+            </div>
+          </div>
+          <div class="panel">
+            <h4 style="margin-bottom:6px">App 专用密码</h4>
+            <p class="hint" style="margin-bottom:14px">为第三方客户端生成独立密码，与主密码互不影响，可随时撤销。</p>
+            <div class="row" style="margin-bottom:6px">
+              <div class="field" style="flex:1;min-width:220px"><label>用途备注</label><input id="apLabel" placeholder="Thunderbird"></div>
+              <button class="btn tonal" onclick="genApw()">生成</button>
+            </div>
+            <div class="rule-list" id="apList"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===== 管理后台 ===== -->
+      <section class="view" id="v-admin">
+        <div class="adm-sec" id="a-ov">
+          <div class="stat-grid" style="margin-top:0">
+            <div class="stat-card"><div class="k"><svg><use href="#i-users"/></svg>用户</div><div class="v" id="aUsers">0</div><div class="s" id="aUsersSub"></div></div>
+            <div class="stat-card"><div class="k"><svg><use href="#i-mail"/></svg>邮箱</div><div class="v" id="aMbs">0</div><div class="s" id="aMbsSub"></div></div>
+            <div class="stat-card"><div class="k"><svg><use href="#i-inbox"/></svg>邮件总量</div><div class="v" id="aMails">0</div><div class="s">累计收发</div></div>
+            <div class="stat-card"><div class="k"><svg><use href="#i-att"/></svg>数据库</div><div class="v" id="aDb">0</div><div class="s">单文件 · 备份即拷贝</div></div>
+          </div>
+          <div class="dash-row">
+            <div class="panel"><h4>投递队列<em>最近 100 条</em></h4><table class="tbl" id="aQueueTbl"></table></div>
+            <div class="panel"><h4>系统状态</h4>
+              <table class="tbl" id="aSysTbl"></table>
+            </div>
+          </div>
+        </div>
+        <div class="adm-sec" id="a-users" style="display:none">
+          <div class="panel" style="margin-bottom:16px">
+            <h4 style="margin-bottom:14px"><svg style="color:var(--primary)"><use href="#i-add"/></svg>创建用户</h4>
+            <div class="row">
+              <div class="field" style="flex:1;min-width:180px"><label>用户名</label><input id="nuName" placeholder="小写字母/数字/-/_"></div>
+              <div class="field" style="flex:1;min-width:180px"><label>初始密码（至少 6 位）</label><input id="nuPass" type="password" placeholder="••••••"></div>
+              <button class="btn filled" style="height:40px" onclick="createUser()">创建用户</button>
+            </div>
+          </div>
+          <div class="panel"><h4>用户列表</h4><table class="tbl" id="aUsersTbl"></table></div>
+        </div>
+        <div class="adm-sec" id="a-domains" style="display:none">
+          <div class="panel" style="margin-bottom:16px">
+            <h4 style="margin-bottom:14px"><svg style="color:var(--primary)"><use href="#i-add"/></svg>添加域名</h4>
+            <div class="row">
+              <div class="field" style="flex:1;min-width:240px"><label>域名</label><input id="ndName" placeholder="example.com"></div>
+              <button class="btn filled" onclick="addDomain()">添加域名</button>
+            </div>
+            <p class="hint" style="margin-top:10px">添加后自动生成 DKIM 密钥，请到 DNS 发布对应 TXT 记录。</p>
+          </div>
+          <div class="panel"><h4>域名列表</h4><table class="tbl" id="aDomainsTbl"></table></div>
+        </div>
+        <div class="adm-sec" id="a-queue" style="display:none">
+          <div class="panel"><h4>投递队列</h4><table class="tbl" id="aQueueTbl2"></table></div>
+        </div>
+        <div class="adm-sec" id="a-conf" style="display:none">
+          <div class="panel" style="margin-bottom:16px">
+            <h4 style="margin-bottom:6px">注册开关</h4>
+            <div style="display:flex;align-items:center;gap:14px;margin-top:12px">
+              <div class="switch" id="regToggle" onclick="toggleReg()"></div>
+              <div><b style="font-size:13.5px">开放自助注册</b><div class="hint">关闭时登录页不显示注册入口，仅管理员可创建用户</div></div>
+            </div>
+          </div>
+          <div class="panel">
+            <h4>协议端口 <span class="hint" style="font-weight:400">只填数字（如 25）· 留空关闭该监听 · 保存后重启生效</span></h4>
+            <div class="port-grid">
+              <div class="port-item"><label>SMTP 收信<i>对外接收邮件（RFC 5321）</i></label><input data-port="smtp_listen" placeholder="25"></div>
+              <div class="port-item"><label>SMTP 提交<i>客户端发信，需认证</i></label><input data-port="smtp_submission" placeholder="587"></div>
+              <div class="port-item"><label>SMTPS 隐式加密<i>SSL 直连发信</i></label><input data-port="smtp_tls" placeholder="465"></div>
+              <div class="port-item"><label>IMAP<i>客户端收信同步</i></label><input data-port="imap_listen" placeholder="143"></div>
+              <div class="port-item"><label>IMAPS 隐式加密<i>SSL 直连收信</i></label><input data-port="imap_tls" placeholder="993"></div>
+              <div class="port-item"><label>POP3<i>客户端收信下载</i></label><input data-port="pop3_listen" placeholder="110"></div>
+              <div class="port-item"><label>POP3S 隐式加密<i>SSL 直连</i></label><input data-port="pop3_tls" placeholder="995"></div>
+            </div>
+            <button class="btn filled" style="margin-top:16px" onclick="savePorts()">保存端口设置</button>
+          </div>
+        </div>
+      </section>
+
+    </div></main>
   </div>
 </div>
 
-<md-dialog id="dlgCompose">
-  <div slot="headline">写 信</div>
-  <form slot="content" id="composeForm" method="dialog" style="display:flex;flex-direction:column;gap:12px;min-width:420px">
-    <md-outlined-text-field id="cpFrom" label="发件人" disabled></md-outlined-text-field>
-    <md-outlined-text-field id="cpTo" label="收件人邮箱" type="email"></md-outlined-text-field>
-    <md-outlined-text-field id="cpSubject" label="主题"></md-outlined-text-field>
-    <md-outlined-text-field id="cpText" label="正文" type="textarea" rows="6"></md-outlined-text-field>
-    <div class="err" id="cpErr"></div>
-  </form>
-  <div slot="actions">
-    <md-text-button id="cpCancel">取消</md-text-button>
-    <md-filled-button id="cpSend">发送</md-filled-button>
+<!-- ===== 写信弹窗 ===== -->
+<div class="overlay" id="composeDlg">
+  <div class="dlg">
+    <div class="hd"><h3>写 信</h3><button class="iconbtn x" onclick="closeDlg('composeDlg')"><svg><use href="#i-del"/></svg></button></div>
+    <div class="bd">
+      <div class="field"><label>发件人</label><input id="cpFrom" disabled style="background:var(--surface-2)"></div>
+      <div class="field"><label>收件人</label><input id="cpTo" placeholder="someone@example.com"></div>
+      <div class="field"><label>主题</label><input id="cpSubject" placeholder="邮件主题"></div>
+      <div class="field"><label>正文</label><textarea id="cpText" placeholder="输入正文…"></textarea></div>
+      <div class="err" id="cpErr"></div>
+    </div>
+    <div class="ft">
+      <button class="btn text" onclick="closeDlg('composeDlg')">取消</button>
+      <button class="btn filled" onclick="sendCompose()">发送</button>
+    </div>
   </div>
-</md-dialog>
+</div>
 
-<md-dialog id="dlgAp">
-  <div slot="headline">App 专用密码已生成</div>
-  <div slot="content" style="min-width:360px">
-    <p class="hint">仅此一次展示，请立即复制保存：</p>
-    <div class="apw-box" id="apwValue"></div>
+<!-- ===== App 密码弹窗 ===== -->
+<div class="overlay" id="apwDlg">
+  <div class="dlg" style="width:440px">
+    <div class="hd"><h3>App 专用密码已生成</h3><button class="iconbtn x" onclick="closeDlg('apwDlg')"><svg><use href="#i-del"/></svg></button></div>
+    <div class="bd">
+      <p class="hint">仅此一次展示，请立即复制到客户端：</p>
+      <div class="apw-box" id="apwValue"></div>
+    </div>
+    <div class="ft"><button class="btn filled" onclick="closeDlg('apwDlg');toast('已复制')">复制并关闭</button></div>
   </div>
-  <div slot="actions"><md-filled-button id="apwOk">我已保存</md-filled-button></div>
-</md-dialog>
+</div>
 
-<md-snackbar id="toast" placement="bottom"></md-snackbar>
-<script type="module" src="app.js"></script>
+<button class="fab" onclick="openCompose()"><svg><use href="#i-edit"/></svg>写 信</button>
+<div id="toast"></div>
+
+<script src="app.js"></script>
 </body>
 </html>

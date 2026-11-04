@@ -50,8 +50,12 @@ func (h *MailHandler) PortsPut(c *gin.Context) {
 			return
 		}
 		v = strings.TrimSpace(v)
+		// 纯数字 → 自动补冒号（UI 输入 25 即 :25）
+		if v != "" && !strings.Contains(v, ":") {
+			v = ":" + v
+		}
 		if v != "" && !validListen(v) {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "端口格式错误：" + v + "（应为 :25 或 0.0.0.0:25）"})
+			c.JSON(http.StatusBadRequest, gin.H{"error": "端口格式错误：" + v + "（应为 25 或 0.0.0.0:25）"})
 			return
 		}
 		h.Store.SetSetting(k, v)

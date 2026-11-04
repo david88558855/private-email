@@ -179,13 +179,6 @@ func (h *MailHandler) MailboxCreate(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "前缀仅限小写字母/数字/-/_，2-32 位"})
 		return
 	}
-	// 数量上限
-	var count int64
-	h.Store.DB.QueryRow(`SELECT COUNT(*) FROM mailboxes WHERE user_id=?`, uid).Scan(&count)
-	if count >= 10 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "每个用户最多 10 个邮箱"})
-		return
-	}
 	// 域名：指定则校验，否则取第一个
 	domainID := req.DomainID
 	var domain string
