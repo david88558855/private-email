@@ -217,7 +217,7 @@ svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.7;stroke
 .fab:active{transform:scale(.97)}
 
 /* 表单页 */
-.form-page{max-width:840px}
+.form-page{max-width:1160px}
 .form-page .panel{border:2px solid var(--line);border-radius:var(--r-md)}
 .form-page .rule-item{border:2px solid var(--outline)}
 .row{display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end}
