@@ -221,7 +221,7 @@ function renderReader() {
   }
   if (m.html_body) {
     const f = document.createElement('iframe');
-    f.className = 'mail-frame'; f.sandbox = 'allow-same-origin';
+    f.className = 'mail-frame'; f.sandbox = ''; // 无任何权限：脚本/顶层导航/同源全禁（邮件 HTML 严格隔离）
     f.style.height = `calc(100% - ${m.code ? 74 : 0}px)`;
     body.appendChild(f);
     f.srcdoc = `<!DOCTYPE html><html><head><meta charset="utf-8"><base target="_blank">
