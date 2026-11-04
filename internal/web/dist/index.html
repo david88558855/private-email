@@ -298,6 +298,22 @@
 </div>
 
 <button class="fab" onclick="openCompose()"><svg><use href="#i-edit"/></svg>写 信</button>
+<!-- DKIM 详情弹窗 -->
+<div class="overlay" id="dkimDlg" onclick="if(event.target===this)closeDlg('dkimDlg')">
+  <div class="dlg" style="width:640px;max-width:94vw">
+    <div class="hd"><h3 id="dkimDlgTitle">DKIM 记录</h3><button class="iconbtn x" onclick="closeDlg('dkimDlg')"><svg><use href="#i-del"/></svg></button></div>
+    <div class="bd">
+      <p class="hint">在 DNS 服务商添加以下 TXT 记录：</p>
+      <div class="field" style="margin-top:10px"><label>记录类型 / 主机名</label><input id="dkimHost" readonly style="background:var(--surface-2)"></div>
+      <div class="field" style="margin-top:12px"><label>记录值（v=DKIM1; k=rsa; p=…）</label>
+        <textarea id="dkimValue" readonly rows="6" style="background:var(--surface-2);font-family:ui-monospace,monospace;font-size:12px;line-height:1.6;word-break:break-all"></textarea></div>
+    </div>
+    <div class="ft">
+      <button class="btn text" onclick="closeDlg('dkimDlg')">关闭</button>
+      <button class="btn filled" onclick="copyDkim()">复制完整记录值</button>
+    </div>
+  </div>
+</div>
 <div id="toast"></div>
 
 <script src="app.js"></script>

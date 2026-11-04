@@ -418,7 +418,7 @@ async function loadAdmin() {
     const ds = (await api.req('/admin/domains')).items;
     $('#aDomainsTbl').innerHTML = `<tr><th>域名</th><th>DKIM 记录</th><th></th></tr>` + (ds.length ? ds.map((d) => `
       <tr><td><b>${esc(d.domain)}</b><div class="hint">${esc(d.created_at.slice(0, 10))}</div></td>
-      <td>${d.dkim_dns ? `<div class="hint">${esc(d.dkim_dns.host)}</div><code style="font-size:11px;color:var(--osv);word-break:break-all">${esc(d.dkim_dns.record.slice(0, 72))}…</code>` : '<span class="hint">生成中</span>'}</td>
+      <td>${d.dkim_dns ? `<div class="hint">${esc(d.dkim_dns.host)}</div><button class="btn text" style="height:30px;padding:0 10px;color:var(--primary)" onclick="showDkim('${esc(d.domain)}')">查看完整记录</button>` : '<span class="hint">生成中</span>'}</td>
       <td><button class="btn text" style="color:var(--error);height:32px;padding:0 10px" onclick="delDomain(${d.id}, '${esc(d.domain)}')">删除</button></td></tr>`).join('') : '<tr><td colspan=3 class="hint">暂无域名</td></tr>');
   } else if (t === 'queue') {
     const q = (await api.req('/queue')).items;
@@ -487,3 +487,18 @@ async function addDomain() {
 
 /* ---------- 入口 ---------- */
 if (api.token) boot(); else showLogin();
+
+/* ---------- DKIM 详情弹窗 ---------- */
+async function showDkim(domain) {
+  const r = await api.req('/admin/domains');
+  const d = r.items.find((x) => x.domain === domain);
+  if (!d?.dkim_dns) { toast('DKIM 记录生成中'); return; }
+  $('#dkimDlgTitle').textContent = 'DKIM 记录 · ' + domain;
+  $('#dkimHost').value = 'TXT  ' + d.dkim_dns.host;
+  $('#dkimValue').value = d.dkim_dns.record;
+  openDlg('dkimDlg');
+}
+function copyDkim() {
+  navigator.clipboard?.writeText($('#dkimValue').value);
+  toast('DKIM 完整记录值已复制');
+}
