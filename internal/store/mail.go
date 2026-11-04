@@ -194,3 +194,36 @@ func (s *Store) EnqueueForward(mailboxID int64, from, to string, raw []byte) {
 	s.DB.Exec(`INSERT INTO mail_queue(mailbox_id, from_addr, to_addr, raw_blob, next_try_at) VALUES(?,?,?,?,datetime('now'))`,
 		mailboxID, from, to, raw)
 }
+
+// RecentMail 工作台最近邮件。
+type RecentMail struct {
+	ID        int64  `json:"id"`
+	Sender    string `json:"sender"`
+	Subject   string `json:"subject"`
+	Code      string `json:"code"`
+	CreatedAt string `json:"created_at"`
+	Unread    bool   `json:"unread"`
+}
+
+// RecentMails 用户跨邮箱最近 N 封。
+func (s *Store) RecentMails(userID int64, n int) ([]RecentMail, int, error) {
+	rows, err := s.DB.Query(`SELECT m.id, m.sender, m.subject, COALESCE(m.code,''), m.created_at,
+		CASE WHEN m.flags LIKE '%\Seen%' THEN 0 ELSE 1 END
+		FROM mails m JOIN folders f ON f.id=m.folder_id JOIN mailboxes mb ON mb.id=f.mailbox_id
+		WHERE mb.user_id=? ORDER BY m.id DESC LIMIT ?`, userID, n)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+	out := []RecentMail{}
+	for rows.Next() {
+		var m RecentMail
+		var unread int
+		if err := rows.Scan(&m.ID, &m.Sender, &m.Subject, &m.Code, &m.CreatedAt, &unread); err != nil {
+			return nil, 0, err
+		}
+		m.Unread = unread == 1
+		out = append(out, m)
+	}
+	return out, len(out), rows.Err()
+}
