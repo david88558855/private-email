@@ -42,7 +42,7 @@ def smtp_send(frm, to, subject, text, html=None):
 ctx = ssl.create_default_context(); ctx.check_hostname = False; ctx.verify_mode = ssl.CERT_NONE
 
 print('=== 1. 认证 ===')
-pw = open('./data/initial_admin_password.txt').read().split('password: ')[1].strip()
+pw = open(os.environ.get('PE_DATA', './data') + '/initial_admin_password.txt').read().split('password: ')[1].strip()
 st, r = http('/auth/login', {'username': 'admin', 'password': 'wrong'}); ok('错误密码拒绝', st == 401)
 st, r = http('/auth/login', {'username': 'admin', 'password': pw}); ok('登录', st == 200 and r.get('token')); T = r['token']
 st, r = http('/auth/login', {'username': 'admin', 'password': pw}); T2 = r.get('token', '')
@@ -151,10 +151,15 @@ st, r = http(f'/admin/users/{qa["id"]}', {'op': 'enable'}, token=T, method='PATC
 st, r = http('/auth/login', {'username': 'qa_user' + TAG, 'password': 'newpass77'}); ok('新密码登录', st == 200); QT = r['token']
 st, r = http('/admin/stats', token=QT); ok('普通用户禁管理', st == 403)
 st, r = http(f'/mailboxes/{MB}/folders', token=QT); ok('跨用户邮箱隔离', st == 403)
-st, r = http('/admin/invites', token=T, method='POST'); inv = r.get('code', ''); ok('生成邀请码', len(inv) >= 6)
-st, r = http('/auth/register', {'invite': inv, 'username': 'reg_user' + TAG, 'password': 'regpass88'})
-ok('邀请注册', st == 200 and '@' in r.get('address', ''))
-st, r = http('/auth/register', {'invite': inv, 'username': 'dup_user' + TAG, 'password': 'regpass88'}); ok('邀请码一次性', st == 403)
+st, r = http('/auth/register', {'username': 'reg0' + TAG, 'password': 'regpass88'}); ok('默认关闭注册拒绝', st == 403)
+st, r = http('/admin/settings', token=T); ok('读取设置', st == 200 and r.get('registration_enabled') == False)
+st, r = http('/admin/settings', {'registration_enabled': True}, token=T, method='PUT'); ok('开启注册', st == 200)
+st, r = http('/auth/register', {'username': 'reg1' + TAG, 'password': 'regpass88'}); ok('开放后注册成功', st == 200 and '@' in r.get('address', ''))
+st, r = http('/auth/register', {'username': 'REG INVALID', 'password': 'regpass88'}); ok('非法用户名拒绝', st == 400)
+st, r = http('/admin/settings', {'registration_enabled': False}, token=T, method='PUT'); ok('关闭注册', st == 200)
+st, r = http('/auth/register', {'username': 'reg2' + TAG, 'password': 'regpass88'}); ok('关闭后注册拒绝', st == 403)
+st, r = http('/admin/settings', token=T); ok('设置持久化', r.get('registration_enabled') == False)
+st, r = http('/admin/users', token=T); ok('注册用户在列', any(u['username'] == 'reg1' + TAG for u in r['items']))
 st, r = http(f'/mailboxes/{MB}/app_passwords', {'label': 'audit'}, token=T, method='POST'); apw = r.get('password', '')
 ok('生成 App 密码', len(apw) >= 16)
 M = imaplib.IMAP4('127.0.0.1', 2143); M.login('admin@local.test', apw); M.logout(); ok('App 密码 IMAP 登录', True)

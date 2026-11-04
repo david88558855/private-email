@@ -182,35 +182,6 @@ func (h *MailHandler) DomainAdd(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 
-// Invites GET/POST /api/v1/admin/invites
-func (h *MailHandler) Invites(c *gin.Context) {
-	if !adminOK(c) {
-		return
-	}
-	if c.Request.Method == http.MethodPost {
-		code := randCode(8)
-		h.Store.DB.Exec(`INSERT INTO invites(code, created_by) VALUES(?,?)`, code, c.GetInt64("user_id"))
-		c.JSON(http.StatusOK, gin.H{"code": code})
-		return
-	}
-	rows, err := h.Store.DB.Query(`SELECT i.code, i.created_at, i.used_by,
-		(SELECT username FROM users WHERE id=i.used_by) FROM invites i ORDER BY i.id DESC LIMIT 50`)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "服务异常"})
-		return
-	}
-	defer rows.Close()
-	items := []map[string]any{}
-	for rows.Next() {
-		var code, created string
-		var usedBy any
-		rows.Scan(&code, &created, &usedBy, &usedBy)
-		used := usedBy != nil && usedBy != ""
-		items = append(items, map[string]any{"code": code, "created_at": created, "used": used})
-	}
-	c.JSON(http.StatusOK, gin.H{"items": items})
-}
-
 // Stats GET /api/v1/admin/stats —— 监控概览
 func (h *MailHandler) Stats(c *gin.Context) {
 	if !adminOK(c) {
@@ -230,10 +201,13 @@ func (h *MailHandler) Stats(c *gin.Context) {
 		"db_bytes": dbBytes})
 }
 
-// Register POST /api/v1/auth/register {invite, username, password}
+// Register POST /api/v1/auth/register {username, password} —— 受管理员注册开关控制（默认关闭）。
 func (h *MailHandler) Register(c *gin.Context) {
+	if h.Store.GetSetting("registration_enabled") != "true" {
+		c.JSON(http.StatusForbidden, gin.H{"error": "注册未开放"})
+		return
+	}
 	var req struct {
-		Invite   string `json:"invite" binding:"required"`
 		Username string `json:"username" binding:"required,min=2,max=32"`
 		Password string `json:"password" binding:"required,min=6"`
 	}
@@ -245,12 +219,6 @@ func (h *MailHandler) Register(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "用户名仅限小写字母/数字/-/_，2-32 位"})
 		return
 	}
-	var id int64
-	err := h.Store.DB.QueryRow(`SELECT id FROM invites WHERE code=? AND used_by IS NULL`, req.Invite).Scan(&id)
-	if err != nil {
-		c.JSON(http.StatusForbidden, gin.H{"error": "邀请码无效或已使用"})
-		return
-	}
 	hash, _ := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
 	res, err := h.Store.DB.Exec(`INSERT INTO users(username, password) VALUES(?,?)`, req.Username, string(hash))
 	if err != nil {
@@ -258,16 +226,6 @@ func (h *MailHandler) Register(c *gin.Context) {
 		return
 	}
 	uid, _ := res.LastInsertId()
-	res2, err := h.Store.DB.Exec(`UPDATE invites SET used_by=? WHERE id=? AND used_by IS NULL`, uid, id)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "服务异常"})
-		return
-	}
-	if n, _ := res2.RowsAffected(); n == 0 {
-		h.Store.DB.Exec(`DELETE FROM users WHERE id=?`, uid)
-		c.JSON(http.StatusForbidden, gin.H{"error": "邀请码无效或已使用"})
-		return
-	}
 	var domainID int64
 	var domain string
 	h.Store.DB.QueryRow(`SELECT id, domain FROM domains ORDER BY id LIMIT 1`).Scan(&domainID, &domain)

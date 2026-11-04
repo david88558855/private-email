@@ -42,13 +42,14 @@ func New(db *sql.DB, cfg *config.Config, st *store.Store) *gin.Engine {
 	authed.PATCH("/admin/users/:id", mail.UserPatch)
 	authed.GET("/admin/domains", mail.Domains)
 	authed.POST("/admin/domains", mail.DomainAdd)
-	authed.GET("/admin/invites", mail.Invites)
-	authed.POST("/admin/invites", mail.Invites)
+	authed.GET("/admin/settings", mail.Settings)
+	authed.PUT("/admin/settings", mail.SettingsPut)
 	authed.GET("/admin/stats", mail.Stats)
 	authed.GET("/mailboxes/:id/app_passwords", mail.AppPasswords)
 	authed.POST("/mailboxes/:id/app_passwords", mail.AppPasswords)
 	authed.DELETE("/mailboxes/:id/app_passwords", mail.AppPasswords)
 	api.POST("/auth/register", mail.Register)
+	api.GET("/settings", mail.PublicSettings)
 
 	// 内嵌前端：SPA 回退到 index.html
 	dist, _ := fs.Sub(web.Dist, "dist")

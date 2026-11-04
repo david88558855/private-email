@@ -187,5 +187,15 @@ CREATE TRIGGER mails_fts_au AFTER UPDATE ON mails BEGIN
 END;
 INSERT INTO mails_fts(mails_fts) VALUES('rebuild');
 `,
+		// 003 设置表（注册开关默认关闭）+ 移除邀请码
+		`
+CREATE TABLE IF NOT EXISTS settings (
+	key TEXT PRIMARY KEY,
+	value TEXT NOT NULL,
+	updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+INSERT OR IGNORE INTO settings(key, value) VALUES('registration_enabled', 'false');
+DROP TABLE IF EXISTS invites;
+`,
 	}...)
 }
