@@ -8,6 +8,8 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 
 	"github.com/david88558855/private-email/internal/config"
 	"github.com/david88558855/private-email/internal/database"
@@ -27,10 +29,21 @@ var dataDirP string
 
 func main() {
 	var dataFlag string
+	var httpFlag string
 	var showVersion bool
 	flag.StringVar(&dataFlag, "data", "", "数据目录（默认：二进制所在目录/data）")
+	flag.StringVar(&httpFlag, "port", "", "Web 端口（默认 :9000，如 -port 8080；优先于配置文件）")
 	flag.BoolVar(&showVersion, "version", false, "打印版本")
 	flag.Parse()
+	if httpFlag != "" {
+		// 归一化：8080 → :8080
+		if !strings.Contains(httpFlag, ":") {
+			httpFlag = ":" + httpFlag
+		}
+		if n, err := strconv.Atoi(strings.TrimPrefix(httpFlag, ":")); err != nil || n < 1 || n > 65535 {
+			log.Fatalf("-port 无效：%s（应为 1-65535）", httpFlag)
+		}
+	}
 
 	if showVersion {
 		fmt.Println("private-email", version)
@@ -57,6 +70,11 @@ func main() {
 	cfg, err := config.Load(dataDir)
 	if err != nil {
 		log.Fatalf("加载配置失败: %v", err)
+	}
+	if httpFlag != "" {
+		// -port 参数：覆盖 Web 端口（最高优先级）
+		cfg.HTTP.Listen = httpFlag
+		log.Printf("Web 端口（参数覆盖）: %s", httpFlag)
 	}
 
 	db, err := database.Open(filepath.Join(dataDir, "db.sqlite"))

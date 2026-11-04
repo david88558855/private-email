@@ -14,6 +14,8 @@ const api = {
   },
 };
 
+const FOLDER_CN = { INBOX: '收件箱', Sent: '已发送', Drafts: '草稿箱', Trash: '垃圾箱' };
+const folderCN = (n) => FOLDER_CN[n] || n;
 const state = { view: 'dashboard', folder: null, folderName: 'INBOX', mail: null, mails: [], filter: 'all',
   mailboxes: [], folders: [], mb: null, me: null, q: '', admTab: 'ov', adminConsole: false, loginMode: 'user' };
 
@@ -179,10 +181,10 @@ async function loadInbox() {
 }
 function renderFolderStrip() {
   $('#folderStrip').innerHTML = state.folders.map((f) =>
-    `<button class="${f.id === state.folder ? 'on' : ''}" data-fid="${f.id}">${esc(f.name)}${f.unread ? ` ${f.unread}` : ''}</button>`).join('');
+    `<button class="${f.id === state.folder ? 'on' : ''}" data-fid="${f.id}">${esc(folderCN(f.name))}${f.unread ? ` <span class="fbadge">${f.unread}</span>` : ''}</button>`).join('');
   $$('#folderStrip [data-fid]').forEach((b) => b.onclick = () => switchFolder(+b.dataset.fid));
   const f = state.folders.find((x) => x.id === state.folder);
-  $('#mailPanelHd').innerHTML = `<svg style="color:var(--primary)"><use href="#i-inbox"/></svg>${esc(f?.name || '收件箱')}<span class="badge ${f?.unread ? '' : 'zero'}">${f?.unread || 0}</span>`;
+  $('#mailPanelHd').innerHTML = `<svg style="color:var(--primary)"><use href="#i-inbox"/></svg>${esc(folderCN(f?.name || 'INBOX'))}<span class="badge ${f?.unread ? '' : 'zero'}">${f?.unread || 0}</span>`;
 }
 function switchFolder(id) { const f = state.folders.find((x) => x.id === id); state.folder = id; state.folderName = f?.name || 'INBOX'; renderFolderStrip(); loadMails(); }
 function setFilter(btn, f) { state.filter = f; $$('#segFilter button').forEach((b) => b.classList.toggle('on', b === btn)); renderList(); }
@@ -198,7 +200,7 @@ async function loadMails(silent) {
 }
 function renderList() {
   const box = $('#mailList');
-  if (!state.mails.length) { box.innerHTML = '<div class="empty">暂无邮件</div>'; return; }
+  if (!state.mails.length) { box.innerHTML = '<div class="empty"><svg><use href="#i-mail"/></svg>暂无邮件</div>'; return; }
   box.innerHTML = state.mails.map((m) => `
     <div class="m-item ${state.mail?.id === m.id ? 'on' : ''} ${m.flags.includes('\\Seen') ? '' : 'unread'}" onclick="openMail(${m.id})">
       <div class="l1"><span class="from">${esc(m.sender)}</span><span class="time">${fmtTime(m.created_at)}</span></div>
