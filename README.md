@@ -27,7 +27,7 @@ Go 1.27.3 · Gin · modernc.org/sqlite（纯 Go，无 CGO）· 前端 go:embed �
 首次启动：
 
 1. 自动建库、生成默认 `data/config.yaml`、自签 TLS 证书
-2. 创建管理员 `admin`，随机密码写入 `data/initial_admin_password.txt`（请立即登录并修改）
+2. 创建管理员 `admin`，默认密码 `adnin`（请立即登录并修改）
 3. 默认域名 `local.test` 自动创建；Web 端口 `:8080`
 
 生产部署（假设域名 mail.example.com，服务器 IP 可达）：
@@ -67,6 +67,8 @@ docker run -p 8080:8080 -p 25:25 -v $PWD/data:/app/data private-email
 关键项：
 
 ```yaml
+http:
+  listen: ":9000"        # Web 端口
 smtp:
   listen: ":25"          # 入站
   submission: ":587"     # 客户端提交
