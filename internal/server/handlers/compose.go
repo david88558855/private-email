@@ -32,6 +32,19 @@ func (h *MailHandler) Compose(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
 		return
 	}
+	// 与入站同一条上限：正文没有边界时，一个登录用户就能把库和内存撑爆
+	maxMsg := h.Config.SMTP.MaxSize * 1024 * 1024
+	if maxMsg <= 0 {
+		maxMsg = 25 * 1024 * 1024
+	}
+	if len(req.Subject) > 998 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "主题过长（上限 998 字符）"})
+		return
+	}
+	if int64(len(req.Text)) > maxMsg {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "正文过长（上限 " + strconv.FormatInt(maxMsg/1024/1024, 10) + "MB）"})
+		return
+	}
 	var mb store.Mailbox
 	if err := h.Store.DB.QueryRow(`SELECT id, user_id, address, domain_id, is_active FROM mailboxes WHERE id=?`, mbID).
 		Scan(&mb.ID, &mb.UserID, &mb.Address, &mb.DomainID, &mb.IsActive); err != nil {
@@ -55,6 +68,11 @@ func (h *MailHandler) Compose(c *gin.Context) {
 	fmt.Fprintf(buf, "Content-Transfer-Encoding: base64\r\n\r\n")
 	buf.Write(encodeB64(req.Text))
 	raw := buf.Bytes()
+	// base64 膨胀后仍可能越过上限，拼包后再校一次
+	if int64(len(raw)) > maxMsg {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "邮件体积超过上限（含编码膨胀）"})
+		return
+	}
 
 	// 存 Sent（失败仅记日志，不阻断投递）
 	sentID, err := h.Store.FolderID(mbID, "Sent")

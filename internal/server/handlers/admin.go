@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/david88558855/private-email/internal/outbound"
+	"github.com/david88558855/private-email/internal/server/middleware"
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/bcrypt"
@@ -15,6 +16,7 @@ import (
 // adminOnly 中间件片段
 func adminOK(c *gin.Context) bool {
 	if c.GetString("role") != "admin" {
+		middleware.DrainBody(c)
 		c.JSON(http.StatusForbidden, gin.H{"error": "需要管理员权限"})
 		return false
 	}
@@ -63,6 +65,23 @@ func (h *MailHandler) UserPatch(c *gin.Context) {
 		st := "disabled"
 		if req.Op == "enable" {
 			st = "active"
+		}
+		if req.Op == "disable" {
+			if id == c.GetInt64("user_id") {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "不能禁用当前登录的管理员账号"})
+				return
+			}
+			// 至少保留一个启用的管理员，否则系统再也没人能进后台
+			var role, status string
+			h.Store.DB.QueryRow(`SELECT role, status FROM users WHERE id=?`, id).Scan(&role, &status)
+			if role == "admin" && status == "active" {
+				var others int
+				h.Store.DB.QueryRow(`SELECT COUNT(*) FROM users WHERE role='admin' AND status='active' AND id<>?`, id).Scan(&others)
+				if others == 0 {
+					c.JSON(http.StatusBadRequest, gin.H{"error": "至少保留一个启用的管理员"})
+					return
+				}
+			}
 		}
 		h.Store.DB.Exec(`UPDATE users SET status=? WHERE id=?`, st, id)
 	case "reset":
@@ -169,8 +188,8 @@ func (h *MailHandler) DomainAdd(c *gin.Context) {
 		return
 	}
 	req.Domain = strings.ToLower(strings.Trim(req.Domain, ". "))
-	if !strings.Contains(req.Domain, ".") {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "域名格式错误"})
+	if !validDomain(req.Domain) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "域名格式错误（仅允许字母/数字/连字符，需带顶级域）"})
 		return
 	}
 	if _, err := h.Store.DB.Exec(`INSERT INTO domains(domain, status, dns_verified_at) VALUES(?,?,datetime('now'))`,

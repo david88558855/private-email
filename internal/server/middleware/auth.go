@@ -15,6 +15,7 @@ func Auth(secret string, db *sql.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		h := c.GetHeader("Authorization")
 		if !strings.HasPrefix(h, "Bearer ") {
+			DrainBody(c)
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 			return
 		}
@@ -25,6 +26,7 @@ func Auth(secret string, db *sql.DB) gin.HandlerFunc {
 			return []byte(secret), nil
 		}, jwt.WithValidMethods([]string{"HS256", "HS384", "HS512"}))
 		if err != nil || !tok.Valid {
+			DrainBody(c)
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 			return
 		}
@@ -42,6 +44,7 @@ func Auth(secret string, db *sql.DB) gin.HandlerFunc {
 		// 角色与状态以库为准，避免令牌签发后权限变化不生效
 		var status, role string
 		if err := db.QueryRow(`SELECT status, role FROM users WHERE id=?`, uid).Scan(&status, &role); err != nil || status != "active" {
+			DrainBody(c)
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 			return
 		}

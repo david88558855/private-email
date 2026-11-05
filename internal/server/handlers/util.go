@@ -49,3 +49,9 @@ func dnsTXTFor(pemKey string) string {
 var usernameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{1,31}$`)
 
 func validUsername(s string) bool { return usernameRe.MatchString(s) }
+
+// domainRe 严格域名格式：标签只能是小写字母/数字/连字符，必须以字母数字开头结尾。
+// 之前只校验「含点」，导致带引号的字符串可以入库并拼进管理端 HTML。
+var domainRe = regexp.MustCompile(`^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$`)
+
+func validDomain(s string) bool { return len(s) <= 253 && domainRe.MatchString(s) }

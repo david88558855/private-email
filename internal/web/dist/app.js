@@ -17,7 +17,7 @@ const api = {
 const FOLDER_CN = { INBOX: '收件箱', Sent: '已发送', Drafts: '草稿箱', Trash: '垃圾箱' };
 const folderCN = (n) => FOLDER_CN[n] || n;
 const state = { view: 'dashboard', folder: null, folderName: 'INBOX', mail: null, mails: [], filter: 'all',
-  mailboxes: [], folders: [], mb: null, me: null, q: '', admTab: 'ov', adminConsole: false, loginMode: 'user' };
+  mailboxes: [], folders: [], mb: null, me: null, q: '', admTab: 'ov', adminConsole: false, loginMode: 'user', adminDomains: [] };
 
 const VIEWS = {
   dashboard: { title: '仪表板', icon: 'i-dash', group: '工作台' },
@@ -297,8 +297,14 @@ function renderList() {
     </div>`).join('');
 }
 async function openMail(id) {
-  const m = await api.req(`/mails/${id}`);
-  state.mail = m; renderList(); renderReader();
+  try {
+    const m = await api.req(`/mails/${id}`);
+    state.mail = m;
+    // 服务端读取时已置已读，本地列表同步 flags，未读点立即消失（否则要等轮询）
+    const i = state.mails.findIndex((x) => x.id === id);
+    if (i >= 0) state.mails[i].flags = m.flags;
+    renderList(); renderReader();
+  } catch (e) { toast(e.error || '邮件加载失败'); }
 }
 function renderReader() {
   const box = $('#reader');
@@ -504,10 +510,11 @@ async function loadAdmin() {
       </td></tr>`).join('');
   } else if (t === 'domains') {
     const ds = (await api.req('/admin/domains')).items;
+    state.adminDomains = ds;
     $('#aDomainsTbl').innerHTML = `<tr><th>域名</th><th>DKIM 记录</th><th></th></tr>` + (ds.length ? ds.map((d) => `
       <tr><td><b>${esc(d.domain)}</b><div class="hint">${esc(d.created_at.slice(0, 10))}</div></td>
-      <td>${d.dkim_dns ? `<div class="hint">${esc(d.dkim_dns.host)}</div><button class="btn text" style="height:30px;padding:0 10px;color:var(--primary)" onclick="showDkim('${esc(d.domain)}')">查看完整记录</button>` : '<span class="hint">生成中</span>'}</td>
-      <td><button class="btn text" style="color:var(--error);height:32px;padding:0 10px" onclick="delDomain(${d.id}, '${esc(d.domain)}')">删除</button></td></tr>`).join('') : '<tr><td colspan=3 class="hint">暂无域名</td></tr>');
+      <td>${d.dkim_dns ? `<div class="hint">${esc(d.dkim_dns.host)}</div><button class="btn text" style="height:30px;padding:0 10px;color:var(--primary)" onclick="showDkim(${d.id})">查看完整记录</button>` : '<span class="hint">生成中</span>'}</td>
+      <td><button class="btn text" style="color:var(--error);height:32px;padding:0 10px" onclick="delDomain(${d.id})">删除</button></td></tr>`).join('') : '<tr><td colspan=3 class="hint">暂无域名</td></tr>');
   } else if (t === 'queue') {
     const q = (await api.req('/queue')).items;
     $('#aQueueTbl2').innerHTML = `<tr><th>状态</th><th>发件人</th><th>收件人</th><th>尝试</th><th>时间</th><th>错误</th></tr>` + (q.length ? q.map((r) => `
@@ -559,8 +566,10 @@ async function userOp(id, op) {
   toast('操作成功'); loadAdmin();
 }
 async function resetPw(id) { userOp(id, 'reset'); }
-async function delDomain(id, name) {
-  if (!confirm('确定删除域名 ' + name + '？其下有邮箱时会被拒绝')) return;
+async function delDomain(id) {
+  const d = (state.adminDomains || []).find((x) => x.id === id);
+  if (!d) return;
+  if (!confirm('确定删除域名 ' + d.domain + '？其下有邮箱时会被拒绝')) return;
   try {
     await api.req(`/admin/domains/${id}`, { method: 'DELETE' });
     toast('域名已删除'); loadAdmin();
@@ -577,11 +586,10 @@ async function addDomain() {
 if (api.token) boot(); else showLogin();
 
 /* ---------- DKIM 详情弹窗 ---------- */
-async function showDkim(domain) {
-  const r = await api.req('/admin/domains');
-  const d = r.items.find((x) => x.domain === domain);
+async function showDkim(id) {
+  const d = (state.adminDomains || []).find((x) => x.id === id);
   if (!d?.dkim_dns) { toast('DKIM 记录生成中'); return; }
-  $('#dkimDlgTitle').textContent = 'DKIM 记录 · ' + domain;
+  $('#dkimDlgTitle').textContent = 'DKIM 记录 · ' + d.domain;
   $('#dkimHost').value = 'TXT  ' + d.dkim_dns.host;
   $('#dkimValue').value = d.dkim_dns.record;
   openDlg('dkimDlg');

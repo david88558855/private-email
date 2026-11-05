@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/david88558855/private-email/internal/authlimit"
 	"github.com/david88558855/private-email/internal/config"
 	"github.com/david88558855/private-email/internal/store"
 	imapbackend "github.com/emersion/go-imap"
@@ -29,15 +30,34 @@ type Backend struct {
 	Cert   *tls.Certificate
 }
 
-func (b *Backend) Login(_ *imapbackend.ConnInfo, username, password string) (backend.User, error) {
-	mb, ok := b.Store.VerifyMailboxAuth(username, password)
-	if !ok {
+func (b *Backend) Login(conn *imapbackend.ConnInfo, username, password string) (backend.User, error) {
+	key := remoteKey(conn)
+	// 失败太多次先挡住，别再让它消耗 bcrypt
+	if !authlimit.Allow(key) {
 		return nil, backend.ErrInvalidCredentials
 	}
+	mb, ok := b.Store.VerifyMailboxAuth(username, password)
+	if !ok {
+		authlimit.Fail(key)
+		return nil, backend.ErrInvalidCredentials
+	}
+	authlimit.Reset(key)
 	if err := b.Store.EnsureFolders(mb.ID); err != nil {
 		return nil, err
 	}
 	return &User{be: b, mb: mb}, nil
+}
+
+// remoteKey 取来源 IP 作为限速键。
+func remoteKey(ci *imapbackend.ConnInfo) string {
+	if ci == nil || ci.RemoteAddr == nil {
+		return "unknown"
+	}
+	host, _, err := net.SplitHostPort(ci.RemoteAddr.String())
+	if err != nil {
+		return ci.RemoteAddr.String()
+	}
+	return host
 }
 
 // ---------- User ----------
@@ -77,7 +97,20 @@ func (u *User) GetMailbox(name string) (backend.Mailbox, error) {
 	return nil, backend.ErrNoSuchMailbox
 }
 
+// systemFolders 内置文件夹：改名会打断 SMTP 投递 / 已发送副本 / 删除进垃圾箱等依赖。
+var systemFolders = map[string]bool{"INBOX": true, "Sent": true, "Drafts": true, "Trash": true}
+
+func validFolderName(name string) bool {
+	return name != "" && len(name) <= 64 && !strings.ContainsAny(name, "\r\n")
+}
+
 func (u *User) CreateMailbox(name string) error {
+	if !validFolderName(name) {
+		return fmt.Errorf("invalid folder name")
+	}
+	if systemFolders[name] {
+		return fmt.Errorf("folder already exists")
+	}
 	_, err := u.be.Store.DB.Exec(`INSERT INTO folders(mailbox_id, name, uid_validity) VALUES(?,?,?)`,
 		u.mb.ID, name, randUint32())
 	return err
@@ -92,6 +125,13 @@ func (u *User) DeleteMailbox(name string) error {
 }
 
 func (u *User) RenameMailbox(old, new string) error {
+	// 重命名 INBOX 会让收信投递找不到目标文件夹，等于整箱失联；Sent/Trash 同理会打断业务路径
+	if systemFolders[old] || systemFolders[new] {
+		return fmt.Errorf("cannot rename system folder")
+	}
+	if !validFolderName(new) {
+		return fmt.Errorf("invalid folder name")
+	}
 	_, err := u.be.Store.DB.Exec(`UPDATE folders SET name=? WHERE mailbox_id=? AND name=?`, new, u.mb.ID, old)
 	return err
 }

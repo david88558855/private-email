@@ -17,12 +17,18 @@ import (
 func New(db *sql.DB, cfg *config.Config, st *store.Store) *gin.Engine {
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.New()
-	r.Use(gin.Recovery())
+	r.Use(middleware.SecurityHeaders(), gin.Recovery())
 	// 不信任任何代理头：否则 X-Forwarded-For 可伪造，登录限速形同虚设
 	_ = r.SetTrustedProxies(nil)
 
 	auth := &handlers.AuthHandler{DB: db, Config: cfg}
 	api := r.Group("/api/v1")
+	// 请求体上限：单封上限的 2 倍（正文 base64 膨胀 + JSON 转义余量）
+	bodyMax := cfg.SMTP.MaxSize * 1024 * 1024 * 2
+	if bodyMax <= 0 {
+		bodyMax = 50 * 1024 * 1024
+	}
+	api.Use(middleware.BodyLimit(bodyMax))
 	api.POST("/auth/login", middleware.LoginRateLimit(cfg.Security.LoginRate), auth.Login)
 	authed := api.Group("", middleware.Auth(cfg.Security.JWTSecret, db))
 	authed.GET("/me", auth.Me)
@@ -61,7 +67,7 @@ func New(db *sql.DB, cfg *config.Config, st *store.Store) *gin.Engine {
 	authed.GET("/mailboxes/:id/app_passwords", mail.AppPasswords)
 	authed.POST("/mailboxes/:id/app_passwords", mail.AppPasswords)
 	authed.DELETE("/mailboxes/:id/app_passwords", mail.AppPasswords)
-	api.POST("/auth/register", mail.Register)
+	api.POST("/auth/register", middleware.LoginRateLimit(cfg.Security.LoginRate), mail.Register)
 	api.GET("/settings", mail.PublicSettings)
 
 	// 内嵌前端：SPA 回退到 index.html

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"blitiri.com.ar/go/spf"
+	"github.com/david88558855/private-email/internal/authlimit"
 	"github.com/david88558855/private-email/internal/config"
 	"github.com/david88558855/private-email/internal/mailutil"
 	"github.com/david88558855/private-email/internal/store"
@@ -56,12 +57,34 @@ func (s *session) Auth(mech string) (sasl.Server, error) {
 }
 
 func (s *session) authenticate(username, password string) error {
-	mb, ok := s.be.Store.VerifyMailboxAuth(username, password)
-	if !ok {
+	key := s.remoteKey()
+	if !authlimit.Allow(key) {
 		return smtp.ErrAuthFailed
 	}
+	mb, ok := s.be.Store.VerifyMailboxAuth(username, password)
+	if !ok {
+		authlimit.Fail(key)
+		return smtp.ErrAuthFailed
+	}
+	authlimit.Reset(key)
 	s.authUser = mb.Address
 	return nil
+}
+
+// remoteKey 取来源 IP 作为限速键。
+func (s *session) remoteKey() string {
+	if s.conn == nil {
+		return "unknown"
+	}
+	c := s.conn.Conn()
+	if c == nil || c.RemoteAddr() == nil {
+		return "unknown"
+	}
+	host, _, err := net.SplitHostPort(c.RemoteAddr().String())
+	if err != nil {
+		return c.RemoteAddr().String()
+	}
+	return host
 }
 
 func (s *session) Mail(from string, opts *smtp.MailOptions) error {

@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/david88558855/private-email/internal/authlimit"
 	"github.com/david88558855/private-email/internal/config"
 	"github.com/david88558855/private-email/internal/store"
 )
@@ -95,11 +96,18 @@ func handle(conn net.Conn, st *store.Store) {
 				write("-ERR USER first")
 				break
 			}
+			key := remoteHost(conn)
+			if !authlimit.Allow(key) {
+				write("-ERR too many failed attempts, try later")
+				break
+			}
 			mb, ok := s.st.VerifyMailboxAuth(s.user, strings.Join(parts[1:], " "))
 			if !ok {
+				authlimit.Fail(key)
 				write("-ERR authentication failed")
 				break
 			}
+			authlimit.Reset(key)
 			s.mb = mb
 			s.st.EnsureFolders(mb.ID)
 			folderID, err := s.st.FolderID(mb.ID, "INBOX")
@@ -266,6 +274,18 @@ func headerOnly(raw []byte) []byte {
 }
 
 func (s *sess) authed() bool { return s.mb != nil }
+
+// remoteHost 取来源 IP 作为限速键。
+func remoteHost(conn net.Conn) string {
+	if conn == nil || conn.RemoteAddr() == nil {
+		return "unknown"
+	}
+	host, _, err := net.SplitHostPort(conn.RemoteAddr().String())
+	if err != nil {
+		return conn.RemoteAddr().String()
+	}
+	return host
+}
 
 func (s *sess) stats() (int, int) {
 	n, size := 0, 0
