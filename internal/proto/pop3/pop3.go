@@ -5,7 +5,6 @@ import (
 	"bufio"
 	"crypto/tls"
 
-	"encoding/binary"
 	"fmt"
 	"log"
 	"net"
@@ -18,13 +17,16 @@ import (
 
 // Serve 启动 POP3 明文（110）；TLS 995 于 M6 挂证书后启用。
 func Serve(st *store.Store, cfg *config.Config, cert *tls.Certificate) {
-	ln, err := net.Listen("tcp", cfg.POP3.Listen)
-	if err != nil {
-		log.Printf("POP3 监听 %s 失败（跳过）: %v", cfg.POP3.Listen, err)
-		return
+	// 端口为空表示关闭该监听（net.Listen("tcp","") 会绑随机端口）
+	if cfg.POP3.Listen != "" {
+		ln, err := net.Listen("tcp", cfg.POP3.Listen)
+		if err != nil {
+			log.Printf("POP3 监听 %s 失败（跳过）: %v", cfg.POP3.Listen, err)
+		} else {
+			log.Printf("POP3 服务就绪 %s", cfg.POP3.Listen)
+			go accept(ln, st)
+		}
 	}
-	log.Printf("POP3 服务就绪 %s", cfg.POP3.Listen)
-	go accept(ln, st)
 	if cfg.POP3.TLS != "" && cert != nil {
 		go func() {
 			tln, err := tls.Listen("tcp", cfg.POP3.TLS, &tls.Config{Certificates: []tls.Certificate{*cert}})
@@ -57,9 +59,9 @@ type sess struct {
 }
 
 type mailDrop struct {
-	id  int64
-	uid string
-	raw []byte
+	id   int64
+	uid  string
+	size int
 }
 
 func handle(conn net.Conn, st *store.Store) {
@@ -82,7 +84,11 @@ func handle(conn net.Conn, st *store.Store) {
 		cmd := strings.ToUpper(parts[0])
 		switch cmd {
 		case "USER":
-			s.user = parts[1] // nolint
+			if len(parts) < 2 {
+				write("-ERR username required")
+				break
+			}
+			s.user = parts[1]
 			write("+OK")
 		case "PASS":
 			if s.user == "" {
@@ -101,14 +107,11 @@ func handle(conn net.Conn, st *store.Store) {
 				write("-ERR no INBOX")
 				break
 			}
+			// 只记索引不读正文：正文按 RETR/TOP 现取，避免大邮箱登录时把全部邮件读进内存
 			items, _, _ := s.st.ListMails(folderID, "", 500, 0)
 			s.mails = nil
 			for _, it := range items {
-				full, err := s.st.GetMail(it.ID)
-				if err != nil {
-					continue
-				}
-				s.mails = append(s.mails, mailDrop{id: it.ID, uid: fmt.Sprintf("%d-%d", it.UID, it.Size), raw: full.Raw})
+				s.mails = append(s.mails, mailDrop{id: it.ID, uid: fmt.Sprintf("%d-%d", it.UID, it.Size), size: it.Size})
 			}
 			s.deleted = map[int64]bool{}
 			write(fmt.Sprintf("+OK mailbox has %d messages", len(s.mails)))
@@ -127,7 +130,7 @@ func handle(conn net.Conn, st *store.Store) {
 			if len(parts) > 1 {
 				i, _ := strconv.Atoi(parts[1])
 				if i >= 1 && i <= len(s.mails) && !s.deleted[int64(i)] {
-					write(fmt.Sprintf("+OK %d %d", i, len(s.mails[i-1].raw)))
+					write(fmt.Sprintf("+OK %d %d", i, s.mails[i-1].size))
 				} else {
 					write("-ERR no such message")
 				}
@@ -137,7 +140,7 @@ func handle(conn net.Conn, st *store.Store) {
 			write(fmt.Sprintf("+OK %d messages (%d octets)", n, size))
 			for i, m := range s.mails {
 				if !s.deleted[int64(i+1)] {
-					fmt.Fprintf(w, "%d %d\r\n", i+1, len(m.raw))
+					fmt.Fprintf(w, "%d %d\r\n", i+1, m.size)
 				}
 			}
 			write(".")
@@ -167,13 +170,22 @@ func handle(conn net.Conn, st *store.Store) {
 				write("-ERR not authenticated")
 				break
 			}
+			if len(parts) < 2 {
+				write("-ERR message number required")
+				break
+			}
 			i, _ := strconv.Atoi(parts[1])
 			if i < 1 || i > len(s.mails) || s.deleted[int64(i)] {
 				write("-ERR no such message")
 				break
 			}
+			full, err := s.st.GetMail(s.mails[i-1].id)
+			if err != nil {
+				write("-ERR message gone")
+				break
+			}
 			write("+OK")
-			w.Write(dotStuff(s.mails[i-1].raw))
+			w.Write(dotStuff(full.Raw))
 			write(".")
 			s.st.MarkSeen(s.mails[i-1].id)
 		case "TOP":
@@ -181,13 +193,21 @@ func handle(conn net.Conn, st *store.Store) {
 				write("-ERR not authenticated")
 				break
 			}
+			if len(parts) < 2 {
+				write("-ERR message number required")
+				break
+			}
 			i, _ := strconv.Atoi(parts[1])
-			_, _ = strconv.Atoi(parts[2])
 			if i < 1 || i > len(s.mails) || s.deleted[int64(i)] {
 				write("-ERR no such message")
 				break
 			}
-			head := headerOnly(s.mails[i-1].raw)
+			full, err := s.st.GetMail(s.mails[i-1].id)
+			if err != nil {
+				write("-ERR message gone")
+				break
+			}
+			head := headerOnly(full.Raw)
 			write("+OK")
 			w.Write(head)
 			write("")
@@ -195,6 +215,10 @@ func handle(conn net.Conn, st *store.Store) {
 		case "DELE":
 			if !s.authed() {
 				write("-ERR not authenticated")
+				break
+			}
+			if len(parts) < 2 {
+				write("-ERR message number required")
 				break
 			}
 			i, _ := strconv.Atoi(parts[1])
@@ -248,19 +272,18 @@ func (s *sess) stats() (int, int) {
 	for i, m := range s.mails {
 		if !s.deleted[int64(i+1)] {
 			n++
-			size += len(m.raw)
+			size += m.size
 		}
 	}
 	return n, size
 }
 
-var _ = binary.BigEndian.Uint32
-
 // dotStuff RFC 1939 字节填充：行首 '.' 翻倍（含首行）。
 func dotStuff(raw []byte) []byte {
 	out := make([]byte, 0, len(raw)+16)
+	// 首字节就是 '.' 时补一个点（循环里还会写入原始那个点，合计两个）
 	if len(raw) > 0 && raw[0] == '.' {
-		out = append(out, '.', '.')
+		out = append(out, '.')
 	}
 	for i := 0; i < len(raw); i++ {
 		out = append(out, raw[i])

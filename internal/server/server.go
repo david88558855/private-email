@@ -18,11 +18,13 @@ func New(db *sql.DB, cfg *config.Config, st *store.Store) *gin.Engine {
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.New()
 	r.Use(gin.Recovery())
+	// 不信任任何代理头：否则 X-Forwarded-For 可伪造，登录限速形同虚设
+	_ = r.SetTrustedProxies(nil)
 
 	auth := &handlers.AuthHandler{DB: db, Config: cfg}
 	api := r.Group("/api/v1")
 	api.POST("/auth/login", middleware.LoginRateLimit(cfg.Security.LoginRate), auth.Login)
-	authed := api.Group("", middleware.Auth(cfg.Security.JWTSecret))
+	authed := api.Group("", middleware.Auth(cfg.Security.JWTSecret, db))
 	authed.GET("/me", auth.Me)
 	authed.POST("/me/password", auth.ChangePassword)
 

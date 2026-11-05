@@ -372,17 +372,20 @@ func Serve(b *Backend, cfg *config.Config) {
 	if b.Cert != nil {
 		s.TLSConfig = &tls.Config{Certificates: []tls.Certificate{*b.Cert}}
 	}
-	go func() {
-		log.Printf("IMAP 服务就绪 %s", cfg.IMAP.Listen)
-		ln, err := net.Listen("tcp", cfg.IMAP.Listen)
-		if err != nil {
-			log.Printf("IMAP 监听失败（跳过）: %v", err)
-			return
-		}
-		if err := s.Serve(ln); err != nil {
-			log.Printf("IMAP 退出: %v", err)
-		}
-	}()
+	// 端口为空表示关闭该监听（net.Listen("tcp","") 会绑随机端口）
+	if cfg.IMAP.Listen != "" {
+		go func() {
+			ln, err := net.Listen("tcp", cfg.IMAP.Listen)
+			if err != nil {
+				log.Printf("IMAP 监听失败（跳过）: %v", err)
+				return
+			}
+			log.Printf("IMAP 服务就绪 %s", cfg.IMAP.Listen)
+			if err := s.Serve(ln); err != nil {
+				log.Printf("IMAP 退出: %v", err)
+			}
+		}()
+	}
 	if cfg.IMAP.TLS != "" && b.Cert != nil {
 		go func() {
 			ln, err := tls.Listen("tcp", cfg.IMAP.TLS, s.TLSConfig)

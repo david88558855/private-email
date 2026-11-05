@@ -4,7 +4,6 @@ package smtp
 import (
 	"bytes"
 	"crypto/tls"
-	"database/sql"
 	"io"
 	"log"
 	"net"
@@ -98,6 +97,10 @@ func (s *session) Data(r io.Reader) error {
 	if len(s.rcpts) == 0 {
 		return &smtp.SMTPError{Code: 554, Message: "no valid recipient"}
 	}
+	// 已认证会话只允许用自己的地址发信，防冒用同服务器其他人的发件人
+	if s.authUser != "" && !strings.EqualFold(s.from, s.authUser) {
+		return &smtp.SMTPError{Code: 553, Message: "sender must match authenticated user"}
+	}
 
 	p := mailutil.Parse(raw)
 	// 流水线：SPF → DKIM 验签 → 记分（D5=A）
@@ -186,7 +189,10 @@ func Serve(be *Backend) {
 	s.ReadTimeout = 2 * time.Minute
 	s.WriteTimeout = 2 * time.Minute
 
-	go listen(s, be.Config.SMTP.Listen, "SMTP", s.TLSConfig)
+	// 端口为空表示关闭该监听；net.Listen("tcp","") 会绑随机端口，必须显式跳过
+	if be.Config.SMTP.Listen != "" {
+		go listen(s, be.Config.SMTP.Listen, "SMTP", s.TLSConfig)
+	}
 	if be.Config.SMTP.Submission != "" {
 		go listen(s, be.Config.SMTP.Submission, "Submission", s.TLSConfig)
 	}
@@ -216,8 +222,6 @@ func listen(s *smtp.Server, addr, name string, cert *tls.Config) {
 	defer func() { recover() }()
 	s.Serve(ln)
 }
-
-var _ = sql.ErrNoRows
 
 // loginServer SASL LOGIN 机制（go-sasl 未内置服务端实现）。
 type loginServer struct {

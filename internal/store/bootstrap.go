@@ -11,7 +11,11 @@ import (
 func (s *Store) Bootstrap() {}
 
 // RebuildFTSBody 迁移 002 后为旧邮件补 body_text（触发器自动同步 FTS）。
+// 只做一次：纯 HTML 邮件解析后 body_text 仍可能为空，逐次启动重扫等于反复解析全表。
 func (s *Store) RebuildFTSBody() {
+	if s.GetSetting("fts_backfill_done") == "1" {
+		return
+	}
 	rows, err := s.DB.Query(`SELECT id, raw_blob FROM mails WHERE body_text='' AND length(raw_blob) > 0`)
 	if err != nil {
 		return
@@ -35,4 +39,5 @@ func (s *Store) RebuildFTSBody() {
 	if len(need) > 0 {
 		log.Printf("已重建 %d 封旧邮件的全文索引", len(need))
 	}
+	s.SetSetting("fts_backfill_done", "1")
 }

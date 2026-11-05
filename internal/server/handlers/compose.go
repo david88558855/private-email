@@ -3,13 +3,11 @@ package handlers
 import (
 	"bytes"
 	"crypto/rand"
-	"database/sql"
 	"encoding/hex"
 	"fmt"
 	"log"
 	"mime"
 	"net/http"
-	"net/textproto"
 	"strconv"
 	"time"
 
@@ -121,6 +119,3 @@ func (h *MailHandler) Queue(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, gin.H{"items": items})
 }
-
-var _ = textproto.CanonicalMIMEHeaderKey
-var _ = sql.ErrNoRows

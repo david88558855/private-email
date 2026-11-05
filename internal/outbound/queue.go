@@ -198,6 +198,7 @@ func (w *Worker) viaSmarthost(from string, tos []string, raw []byte) error {
 	}
 	cl, err := smtp.NewClient(conn, host)
 	if err != nil {
+		conn.Close() // NewClient 失败时它不会接管连接，需自行关闭避免 fd 泄漏
 		return err
 	}
 	defer cl.Close()

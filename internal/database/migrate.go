@@ -166,8 +166,6 @@ func Migrate(db *sql.DB) error {
 	return nil
 }
 
-var _ = []string{} // migrations 追加见下方 init 拼接
-
 func init() {
 	migrations = append(migrations, []string{
 		// 002 FTS 同步触发器 + body_text 列（修复硬删后索引孤儿行）

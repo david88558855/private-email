@@ -49,7 +49,6 @@ if (localStorage.getItem('pe_theme') === 'dark') document.documentElement.datase
 /* ---------- 导航 ---------- */
 function renderNav() {
   const nav = $('#sideNav');
-  const unread = state.folders.find((f) => f.name === 'INBOX')?.unread || 0;
   let html = '';
   if (state.adminConsole) {
     for (const [k, v] of Object.entries(ADMIN_VIEWS)) {
@@ -63,12 +62,14 @@ function renderNav() {
   let group = '';
   for (const [id, v] of Object.entries(VIEWS)) {
     if (v.adminOnly && state.me?.role !== 'admin') continue;
+    // 收件箱不再单列入口，邮件视图改由下面的文件夹导航进入
+    if (id === 'inbox') { html += `<div class="side-folders" id="folderStrip"></div>`; continue; }
     if (v.group !== group) { group = v.group; html += `<div class="nav-label">${group}</div>`; }
-    const badge = id === 'inbox' ? `<span class="badge ${unread ? '' : 'zero'}">${unread}</span>` : '';
     html += `<button class="nav-item ${state.view === id ? 'on' : ''}" onclick="showView('${id}')">
-      <svg><use href="#${v.icon}"/></svg>${v.title}${badge}</button>`;
+      <svg><use href="#${v.icon}"/></svg>${v.title}</button>`;
   }
   nav.innerHTML = html;
+  renderFolderStrip();
 }
 
 async function showView(v) {
@@ -180,19 +181,28 @@ async function loadDashboard() {
 async function loadInbox() {
   // 邮箱切换下拉（切换后文件夹与列表全部跟随）
   const sel = $('#mbSwitch');
-  if (sel && sel.options.length !== state.mailboxes.length) {
-    sel.innerHTML = state.mailboxes.map((m) =>
-      `<option value="${m.id}" ${m.id === state.mb?.id ? 'selected' : ''}>${esc(m.address)}</option>`).join('');
-  } else if (sel && state.mb) { sel.value = String(state.mb.id); }
-  if (sel && !sel._bound) {
-    sel._bound = true;
+  if (sel) {
+    if (!state.mailboxes.length) {
+      sel.innerHTML = '<option value="">无邮箱 · 请先创建</option>';
+      sel.disabled = true;
+    } else {
+      sel.disabled = false;
+      // 地址或数量变化时重建选项，避免旧列表残留
+      const sig = state.mailboxes.map((m) => m.id + ':' + m.address).join('|');
+      if (sel.dataset.sig !== sig) {
+        sel.dataset.sig = sig;
+        sel.innerHTML = state.mailboxes.map((m) => `<option value="${m.id}">${esc(m.address)}</option>`).join('');
+      }
+      if (state.mb) sel.value = String(state.mb.id);
+    }
     sel.onchange = async () => {
       state.mb = state.mailboxes.find((m) => m.id === +sel.value);
+      if (!state.mb) return;
       state.folder = null; state.folderName = 'INBOX'; state.mail = null;
       $('#sideMail').textContent = state.mb.address;
       await refreshFolders();
       const inbox = state.folders.find((f) => f.name === 'INBOX');
-      state.folder = inbox?.id || state.folders[0]?.id;
+      state.folder = inbox?.id || state.folders[0]?.id || null;
       await loadMails(); renderFolderStrip();
       toast('已切换：' + state.mb.address);
     };
@@ -202,19 +212,38 @@ async function loadInbox() {
   renderFolderStrip();
   await loadMails(true);
 }
+const FOLDER_ORDER = ['INBOX', 'Sent', 'Drafts', 'Trash'];
+
+// 文件夹导航：始终渲染 5 项，保持正常配色（不因无邮箱或未加载而置灰）
 function renderFolderStrip() {
+  const box = $('#folderStrip');
+  if (!box) return; // 管理后台导航视图下没有该容器
   const total = state.folders.reduce((a, f) => a + (f.total || 0), 0);
-  const unread = state.folders.reduce((a, f) => a + (f.unread || 0), 0);
-  $('#folderStrip').innerHTML =
-    `<button class="all ${!state.folder ? 'on' : ''}" data-fid="all"><svg style="width:15px;height:15px"><use href="#i-inbox"/></svg>全部邮件 <span class="fbadge">${total}</span></button>` +
-    state.folders.map((f) =>
-      `<button class="${f.id === state.folder ? 'on' : ''}" data-fid="${f.id}">${esc(folderCN(f.name))}${f.unread ? ` <span class="fbadge">${f.unread}</span>` : `<span class="fcount">${f.total || ''}</span>`}</button>`).join('');
-  $$('#folderStrip [data-fid]').forEach((b) => b.onclick = () => {
-    if (b.dataset.fid === 'all') { state.folder = null; renderFolderStrip(); loadMails(); return; }
-    switchFolder(+b.dataset.fid);
-  });
+  const inMail = state.view === 'inbox';
+  let html = `<button class="all ${inMail && !state.folder ? 'on' : ''}" data-fid="all">
+    <svg style="width:15px;height:15px"><use href="#i-inbox"/></svg>全部邮件 <span class="fbadge">${total}</span></button>`;
+  for (const name of FOLDER_ORDER) {
+    const f = state.folders.find((x) => x.name === name);
+    const cnt = f ? (f.unread ? `<span class="fbadge">${f.unread}</span>` : `<span class="fcount">${f.total || ''}</span>`) : '';
+    html += `<button class="${inMail && f && f.id === state.folder ? 'on' : ''}"
+      data-fid="${f ? f.id : ''}" data-name="${name}">${folderCN(name)}${cnt}</button>`;
+  }
+  box.innerHTML = html;
+  $$('#folderStrip [data-fid]').forEach((b) => b.onclick = () => pickFolder(b.dataset.fid, b.dataset.name));
 }
-function switchFolder(id) { const f = state.folders.find((x) => x.id === id); state.folder = id; state.folderName = f?.name || 'INBOX'; renderFolderStrip(); loadMails(); }
+
+// 文件夹点击：无邮箱时引导创建；数据没拉到就地补拉；id 过期按名字兜底
+async function pickFolder(fid, name) {
+  if (!state.mb) { toast('还没有邮箱，先去「邮箱管理」创建一个'); showView('mailboxes'); return; }
+  if (!state.folders.length) await refreshFolders();
+  let f = fid && fid !== 'all' ? state.folders.find((x) => x.id === +fid) : null;
+  if (!f && name) f = state.folders.find((x) => x.name === name);
+  if (!f && name) { toast('文件夹未就绪，请稍后重试'); return; }
+  state.folder = f ? f.id : null;
+  state.folderName = f ? f.name : 'INBOX';
+  if (state.view === 'inbox') { renderFolderStrip(); await loadMails(); }
+  else await showView('inbox');
+}
 function setFilter(btn, f) { state.filter = f; $$('#segFilter button').forEach((b) => b.classList.toggle('on', b === btn)); renderList(); }
 let qT; $('#q').addEventListener('input', (e) => { clearTimeout(qT); qT = setTimeout(() => { state.q = e.target.value.trim(); loadMails(); }, 350); });
 
@@ -293,7 +322,7 @@ async function delMail(id) {
 }
 
 /* ---------- 写信 ---------- */
-function openCompose() { if (!state.mb) return;
+function openCompose() { if (!state.mb) { toast('还没有邮箱，请先在「邮箱管理」创建'); return; }
   $('#cpFrom').value = state.mb.address; $('#cpTo').value = ''; $('#cpSubject').value = ''; $('#cpText').value = ''; $('#cpErr').textContent = '';
   openDlg('composeDlg'); }
 async function sendCompose() {
@@ -314,6 +343,12 @@ async function sendCompose() {
 async function loadMailboxes() {
   state.mailboxes = (await api.req('/mailboxes')).items;
   const domains = (await api.req('/domains')).items;
+  // 从「没有邮箱」到「刚建好第一个」时自动接管，否则收件箱仍是空的
+  if (!state.mb && state.mailboxes.length) {
+    state.mb = state.mailboxes[0];
+    $('#sideMail').textContent = state.mb.address;
+    await refreshFolders();
+  }
   if (domains.length) {
     $('#mbDomain').disabled = false;
     $('#mbDomain').innerHTML = domains.map((d) => `<option value="${d.id}">${esc(d.domain)}</option>`).join('');
@@ -323,13 +358,14 @@ async function loadMailboxes() {
   }
   $('#mbCards').innerHTML = state.mailboxes.length ? state.mailboxes.map((mb, i) => `
     <div class="panel" style="margin-bottom:14px">
-      <h4><svg style="color:var(--primary)"><use href="#i-mail"/></svg>${esc(mb.address)}
-        ${mb.is_active ? '' : '<span class="snip" style="color:var(--error)">已停用</span>'}
-        ${state.mb?.id === mb.id ? '<span class="snip">默认</span>' : ''}</h4>
-      <div style="display:flex;gap:10px;align-items:center;margin-top:12px">
-        <span class="hint" style="flex:1">${mb.is_active ? '收发正常' : '已暂停收发'}</span>
+      <h4><svg style="color:var(--primary)"><use href="#i-mail"/></svg><span class="mb-addr">${esc(mb.address)}</span>
+        ${mb.is_active ? '' : '<span class="snip" style="color:var(--error)">已停用</span>'}</h4>
+      <div class="mb-acts">
+        <span class="hint">${mb.is_active ? '收发正常' : '已暂停收发'}</span>
         <button class="btn text" onclick="toggleMb(${mb.id}, ${mb.is_active ? 'false' : 'true'})">${mb.is_active ? '停用' : '启用'}</button>
-        ${state.mb?.id === mb.id ? '' : `<button class="btn text" onclick="setDefaultMb(${mb.id})">设为默认</button>`}
+        ${state.mb?.id === mb.id
+          ? '<span class="btn text default-tag" title="当前默认邮箱">默认</span>'
+          : `<button class="btn text" onclick="setDefaultMb(${mb.id})">设为默认</button>`}
       </div>
     </div>`).join('') : '<div class="empty" style="grid-column:1/-1;padding:48px 0"><svg><use href="#i-mail"/></svg>暂无邮箱 · 用上方表单创建第一个</div>';
 }

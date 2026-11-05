@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"io"
 	"net/http"
 	"sync"
 	"time"
@@ -31,6 +32,8 @@ func LoginRateLimit(max int) gin.HandlerFunc {
 		over := b.count > max
 		mu.Unlock()
 		if over {
+			// 先排干请求体再拒绝：否则连接带着未读数据关闭会回 RST，客户端拿不到 429
+			io.Copy(io.Discard, io.LimitReader(c.Request.Body, 4096))
 			c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{"error": "尝试过于频繁，请稍后再试"})
 			return
 		}

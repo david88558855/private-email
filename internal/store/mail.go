@@ -89,11 +89,16 @@ func (s *Store) ListMails(folderID int64, q string, limit, offset int) ([]MailSu
 	var err error
 	var total int
 	q = strings.TrimSpace(q)
+	fq := ftsQuery(q)
+	// 只搜到特殊符号时视为无匹配，避免拼出非法 FTS5 表达式导致 500
+	if q != "" && fq == "" {
+		return []MailSummary{}, 0, nil
+	}
 	// 先 COUNT 后取 rows：单写连接下 rows 未关闭时再查询会自锁
-	if q != "" {
+	if fq != "" {
 		base += `JOIN mails_fts f ON f.rowid = m.id AND mails_fts MATCH ? WHERE m.folder_id=? `
-		s.DB.QueryRow(`SELECT COUNT(*) FROM mails m JOIN mails_fts f ON f.rowid=m.id AND mails_fts MATCH ? WHERE m.folder_id=?`, ftsQuery(q), folderID).Scan(&total)
-		rows, err = s.DB.Query(base+`ORDER BY m.id DESC LIMIT ? OFFSET ?`, ftsQuery(q), folderID, limit, offset)
+		s.DB.QueryRow(`SELECT COUNT(*) FROM mails m JOIN mails_fts f ON f.rowid=m.id AND mails_fts MATCH ? WHERE m.folder_id=?`, fq, folderID).Scan(&total)
+		rows, err = s.DB.Query(base+`ORDER BY m.id DESC LIMIT ? OFFSET ?`, fq, folderID, limit, offset)
 	} else {
 		base += `WHERE m.folder_id=? `
 		s.DB.QueryRow(`SELECT COUNT(*) FROM mails WHERE folder_id=?`, folderID).Scan(&total)
@@ -114,13 +119,25 @@ func (s *Store) ListMails(folderID int64, q string, limit, offset int) ([]MailSu
 	return out, total, rows.Err()
 }
 
+// ftsQuery 把用户输入转成 FTS5 查询串：逐词加引号并做前缀匹配。
+// FTS5 的语法符号（引号、星号、括号、冒号、尖号）在引号内也不安全，一律剔除；
+// 全部被剔除则返回空串，由调用方当作“无匹配”处理。
 func ftsQuery(q string) string {
 	words := strings.Fields(q)
-	for i, w := range words {
-		// 前缀匹配：兼容 unicode61 分词下 CJK 连续串（"中文" 命中 "中文主题"）
-		words[i] = `"` + strings.ReplaceAll(w, `"`, ``) + `"*`
+	out := make([]string, 0, len(words))
+	for _, w := range words {
+		w = strings.Map(func(r rune) rune {
+			switch r {
+			case '"', '*', '(', ')', ':', '^':
+				return -1
+			}
+			return r
+		}, w)
+		if w != "" {
+			out = append(out, `"`+w+`"*`)
+		}
 	}
-	return strings.Join(words, " ")
+	return strings.Join(out, " ")
 }
 
 // MailFull 详情（含 BLOB）。

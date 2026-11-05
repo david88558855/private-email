@@ -12,10 +12,6 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-type AdminHandler struct {
-	Store *storeAlias
-}
-
 // adminOnly 中间件片段
 func adminOK(c *gin.Context) bool {
 	if c.GetString("role") != "admin" {
@@ -116,15 +112,17 @@ func (h *MailHandler) UserAdd(c *gin.Context) {
 		return
 	}
 	uid, _ := res.LastInsertId()
-	// 自动建邮箱 username@第一个域名
+	// 自动建邮箱 username@第一个域名（无域名时只建账号）
 	var domainID int64
 	var domain string
 	h.Store.DB.QueryRow(`SELECT id, domain FROM domains ORDER BY id LIMIT 1`).Scan(&domainID, &domain)
+	address := ""
 	if domainID > 0 {
+		address = req.Username + "@" + domain
 		h.Store.DB.Exec(`INSERT INTO mailboxes(user_id, address, domain_id, password) VALUES(?,?,?,?)`,
-			uid, req.Username+"@"+domain, domainID, string(hash))
+			uid, address, domainID, string(hash))
 	}
-	c.JSON(http.StatusOK, gin.H{"ok": true, "address": req.Username + "@" + domain})
+	c.JSON(http.StatusOK, gin.H{"ok": true, "address": address})
 }
 
 // Domains GET /api/v1/admin/domains —— 含 DKIM DNS 记录展示

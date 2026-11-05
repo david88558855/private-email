@@ -32,7 +32,7 @@ func main() {
 	var httpFlag string
 	var showVersion bool
 	flag.StringVar(&dataFlag, "data", "", "数据目录（默认：二进制所在目录/data）")
-	flag.StringVar(&httpFlag, "port", "", "Web 端口（默认 :9000，如 -port 8080；优先于配置文件）")
+	flag.StringVar(&httpFlag, "port", "", "Web 端口（默认 :8080，如 -port 8080；优先于配置文件）")
 	flag.BoolVar(&showVersion, "version", false, "打印版本")
 	flag.Parse()
 	if httpFlag != "" {
@@ -131,6 +131,7 @@ func bootstrapAdmin(db *sql.DB) {
 }
 
 // applyPortSettings 端口类设置覆盖配置（设置表有值则以 Web 设置为准）。
+// 注意：设置项为空串表示「关闭该监听」，必须以设置表为准，不能被 config.yaml 覆盖回去。
 func applyPortSettings(cfg *config.Config, st *store.Store) {
 	pairs := map[string]*string{
 		"smtp_listen":     &cfg.SMTP.Listen,
@@ -145,9 +146,8 @@ func applyPortSettings(cfg *config.Config, st *store.Store) {
 		if !st.HasSetting(k) {
 			// 首次播种：设置表以 config.yaml 现值为初始事实源
 			st.SetSetting(k, *dst)
+			continue
 		}
-		if v := st.GetSetting(k); v != "" {
-			*dst = v
-		}
+		*dst = st.GetSetting(k)
 	}
 }

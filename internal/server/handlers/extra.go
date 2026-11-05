@@ -3,6 +3,7 @@ package handlers
 import (
 	"fmt"
 	"net/http"
+	"regexp"
 	"strconv"
 	"time"
 
@@ -119,9 +120,23 @@ func (h *MailHandler) Rules(c *gin.Context) {
 			if req.Name == "" {
 				req.Name = "自定义规则"
 			}
+			// 存之前先编译：无效或过长的正则会在提取阶段被跳过，等于静默失效
+			if len(req.Pattern) > 128 {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "正则过长（上限 128 字符）"})
+				return
+			}
+			re, err := regexp.Compile(req.Pattern)
+			if err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "正则无效：" + err.Error()})
+				return
+			}
+			if !hasCaptureGroup(re) {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "正则需包含捕获组，如 ([0-9]{6})"})
+				return
+			}
 			if _, err := h.Store.DB.Exec(`INSERT INTO verification_rules(mailbox_id, name, pattern) VALUES(?,?,?)`,
 				mbID, req.Name, req.Pattern); err != nil {
-				c.JSON(http.StatusBadRequest, gin.H{"error": "正则无效"})
+				c.JSON(http.StatusBadRequest, gin.H{"error": "保存失败"})
 				return
 			}
 			c.JSON(http.StatusOK, gin.H{"ok": true})
@@ -264,3 +279,6 @@ func (h *MailHandler) DomainDelete(c *gin.Context) {
 		c.GetInt64("user_id"), "domain_delete", c.Param("id"))
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
+
+// hasCaptureGroup 验证码规则必须能取出捕获组，否则匹配成功也拿不到码。
+func hasCaptureGroup(re *regexp.Regexp) bool { return re.NumSubexp() > 0 }

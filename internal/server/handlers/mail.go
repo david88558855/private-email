@@ -69,6 +69,7 @@ func (h *MailHandler) Get(c *gin.Context) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "无权访问"})
 		return
 	}
+	// 先置已读再取详情：返回体里的 flags 才会带 \Seen（客户端据此更新未读态）
 	if err := h.Store.MarkSeen(id); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "服务异常"})
 		return
@@ -89,7 +90,6 @@ func (h *MailHandler) Get(c *gin.Context) {
 	for _, a := range p.Attachments {
 		m.Attach = append(m.Attach, store.AttachmentRow{Filename: a.Filename, ContentType: a.ContentType, Size: a.Size})
 	}
-	h.Store.MarkSeen(id)
 	c.JSON(http.StatusOK, m)
 }
 

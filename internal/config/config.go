@@ -47,7 +47,7 @@ type Config struct {
 
 func defaults() *Config {
 	c := &Config{}
-	c.HTTP.Listen = ":9000"
+	c.HTTP.Listen = ":8080"
 	c.SMTP.Listen = ":25"
 	c.SMTP.Submission = ":587"
 	c.SMTP.TLS = ":465"

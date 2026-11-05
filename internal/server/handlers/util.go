@@ -8,10 +8,7 @@ import (
 	"encoding/pem"
 	"regexp"
 
-	"github.com/david88558855/private-email/internal/store"
 )
-
-type storeAlias = store.Store
 
 func randCode(n int) string {
 	const cs = "abcdefghjkmnpqrstuvwxyz23456789"

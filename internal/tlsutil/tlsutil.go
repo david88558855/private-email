@@ -55,11 +55,15 @@ func selfSigned(dir string) *tls.Certificate {
 		return nil
 	}
 	keyDER, _ := x509.MarshalECPrivateKey(priv)
-	os.WriteFile(crt, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}), 0o644)
-	os.WriteFile(key, pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: keyDER}), 0o600)
+	crtPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})
+	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: keyDER})
+	os.WriteFile(crt, crtPEM, 0o644)
+	os.WriteFile(key, keyPEM, 0o600)
 	log.Println("TLS：已生成自签证书", crt)
-	c, _ := tls.X509KeyPair(
-		pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}),
-		pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: keyDER}))
+	c, err := tls.X509KeyPair(crtPEM, keyPEM)
+	if err != nil {
+		log.Printf("TLS：自签证书装配失败: %v", err)
+		return nil
+	}
 	return &c
 }

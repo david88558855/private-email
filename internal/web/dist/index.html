@@ -75,7 +75,6 @@
       <div><b>Private Email</b><span id="sideRole">用户工作台</span></div>
     </div>
     <nav id="sideNav"></nav>
-    <div class="side-folders" id="folderStrip"></div>
     <div class="side-foot">
       <div class="avatar" id="sideAvatar">?</div>
       <div class="who"><b id="sideName"></b><span id="sideMail"></span></div>
@@ -111,16 +110,18 @@
       <!-- ===== 收件箱 ===== -->
       <section class="view" id="v-inbox">
         <div class="inbox-tools">
-        <div class="search"><svg><use href="#i-search"/></svg><input id="q" placeholder="搜索邮件、发件人、验证码…"></div>
-          <div class="seg" id="segFilter">
-            <button class="on" onclick="setFilter(this,'all')">全部</button>
-            <button onclick="setFilter(this,'unread')">未读</button>
+          <select id="mbSwitch" class="mb-switch" title="切换邮箱"></select>
+          <div class="tools-right">
+            <div class="search"><svg><use href="#i-search"/></svg><input id="q" placeholder="搜索邮件、发件人、验证码…"></div>
+            <div class="seg" id="segFilter">
+              <button class="on" onclick="setFilter(this,'all')">全部</button>
+              <button onclick="setFilter(this,'unread')">未读</button>
+            </div>
+            <span class="list-meta" id="listMeta"></span>
           </div>
-          <span class="list-meta" id="listMeta"></span>
         </div>
         <div class="inbox-grid">
           <div class="mailpanel">
-            <select id="mbSwitch" class="mb-switch"></select>
             <div class="maillist" id="mailList"></div>
           </div>
           <div class="reader" id="reader">

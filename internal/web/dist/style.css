@@ -165,11 +165,15 @@ svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.7;stroke
 .dm-time{font-size:11.5px;color:var(--osv2);flex:none}
 
 /* 收件箱 */
-.inbox-tools{display:flex;gap:12px;align-items:center;margin-bottom:14px}
-.search{flex:1;max-width:420px;height:42px;display:flex;align-items:center;gap:10px;background:var(--surface);border:1.5px solid transparent;border-radius:var(--r-input);padding:0 14px;box-shadow:var(--sh1);transition:border-color .2s,box-shadow .2s}
+/* 工具条与下方双栏严格同宽同起点：左列=邮件列表(250px)，右列=阅读区 */
+.inbox-tools{display:grid;grid-template-columns:250px 1fr;gap:16px;align-items:center;margin-bottom:14px}
+/* .view>* 的 auto 外边距会把 fit-content 的工具条居中，这里显式撑满 */
+.view#v-inbox>.inbox-tools{width:100%;margin-left:0;margin-right:0}
+.tools-right{display:flex;gap:12px;align-items:center;min-width:0}
+.search{flex:1;min-width:180px;height:42px;display:flex;align-items:center;gap:10px;background:var(--surface);border:1.5px solid transparent;border-radius:var(--r-input);padding:0 14px;box-shadow:var(--sh1);transition:border-color .2s,box-shadow .2s}
 .search:focus-within{border-color:var(--primary);box-shadow:0 0 0 3px rgba(33,150,243,.14)}
 .search svg{color:var(--osv2)}
-.search input{border:0;outline:none;flex:1;background:none}
+.search input{border:0;outline:none;flex:1;min-width:0;background:none}
 .seg{display:flex;background:var(--surface-2);border-radius:var(--r-sm);padding:3px;gap:2px}
 .seg button{height:34px;padding:0 16px;border-radius:8px;font-size:13px;font-weight:500;color:var(--osv);transition:all .15s}
 .seg button.on{background:var(--surface);color:var(--primary);font-weight:600;box-shadow:var(--sh1)}
@@ -248,6 +252,9 @@ svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.7;stroke
 .tbl{width:100%;border-collapse:collapse;font-size:13px}
 .tbl th{text-align:left;font-size:11.5px;font-weight:700;color:var(--osv2);text-transform:uppercase;letter-spacing:.5px;padding:10px 12px;border-bottom:1px solid var(--line)}
 .tbl td{padding:12px;border-bottom:1px solid var(--line);vertical-align:middle}
+/* 行底色圆角：首末单元格各圆外侧，避免悬停时出现尖角色块 */
+.tbl td:first-child{border-top-left-radius:var(--r-xs);border-bottom-left-radius:var(--r-xs)}
+.tbl td:last-child{border-top-right-radius:var(--r-xs);border-bottom-right-radius:var(--r-xs)}
 .tbl tr:last-child td{border-bottom:0}
 .tbl tr:hover td{background:var(--surface-2)}
 .tbl code{font-size:12px;color:var(--osv)}
@@ -280,7 +287,7 @@ svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.7;stroke
 
 /* 标注 */
 .note-bar{position:fixed;left:0;right:0;bottom:0;height:0;background:linear-gradient(90deg,#1565C0,#2196F3);z-index:40}
-@media(max-width:1100px){.stat-grid{grid-template-columns:repeat(2,1fr)}.dash-row{grid-template-columns:1fr}.inbox-grid{grid-template-columns:1fr;height:auto}.maillist{max-height:400px}}
+@media(max-width:1100px){.stat-grid{grid-template-columns:repeat(2,1fr)}.dash-row{grid-template-columns:1fr}.inbox-grid{grid-template-columns:1fr;height:auto}.maillist{max-height:400px}.inbox-tools{grid-template-columns:1fr;row-gap:10px}}
 
 /* ===== 工程版补充 ===== */
 
@@ -297,20 +304,32 @@ body.has-fab .fab{display:inline-flex}
 .fbadge{background:var(--primary);color:var(--on-primary);border-radius:6px;font-size:10.5px;padding:0 5px;font-weight:600;margin-left:2px}
 
 /* 邮箱卡自适应网格：宽屏两列利用余量 */
-#mbCards{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px}
+#mbCards{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px}
 #mbCards .panel{margin-bottom:0}
+/* 卡片标题：地址过长时省略，徽标永远横向不被挤压 */
+#mbCards .panel h4{flex-wrap:nowrap}
+.mb-addr{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#mbCards .panel h4 .snip{flex:none;white-space:nowrap}
+/* 邮箱卡操作区：状态独占一行，按钮一律横向且不被压缩变形 */
+.mb-acts{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-top:12px}
+.mb-acts .hint{flex:1 1 100%}
+.mb-acts .btn{flex:none;white-space:nowrap;padding:0 12px}
+/* 「默认」占「设为默认」原位，仅作状态标识不可点 */
+.mb-acts .default-tag{color:var(--osv2);pointer-events:none;cursor:default}
 @media(max-width:760px){#mbCards{grid-template-columns:1fr}}
-/* ===== 侧栏邮箱切换 + 文件夹子导航（默认显示） ===== */
-.side-folders{display:flex;flex-direction:column;gap:2px;padding:0 12px 10px}
-.side-folders button{display:flex;align-items:center;gap:8px;width:100%;height:36px;padding:0 10px;border-radius:var(--r-xs);font-size:13px;color:var(--osv);text-align:left;transition:background .15s}
+/* ===== 侧栏文件夹导航（邮件视图唯一入口，无邮箱时也常显） ===== */
+.side-folders{display:flex;flex-direction:column;gap:2px;padding:0 0 10px}
+.side-folders button{display:flex;align-items:center;gap:9px;width:100%;height:36px;padding:0 12px;border-radius:var(--r-xs);font-size:13px;font-weight:500;color:var(--osv);text-align:left;transition:background .15s,color .15s}
 .side-folders button:hover{background:var(--surface-2)}
 .side-folders button.on{background:var(--pc);color:var(--on-pc);font-weight:600}
-.side-folders .fbadge{background:var(--primary);color:var(--on-primary);border-radius:6px;font-size:10.5px;padding:0 6px;font-weight:700;margin-left:auto}
+.side-folders .fbadge{margin-left:auto;font-weight:700;padding:0 6px}
+.side-folders .fcount{margin-left:auto;color:var(--osv2);font-size:11.5px}
 .fbadge{background:var(--primary);color:var(--on-primary);border-radius:6px;font-size:10.5px;padding:0 5px;font-weight:600}
 
-.fcount{margin-left:auto;color:var(--osv2);font-size:11.5px}
-
-/* 邮箱切换：收件箱列表上方，与列表同宽 */
-.mb-switch{width:100%;height:38px;margin:10px 0 0;border:2px solid var(--outline);border-radius:var(--r-sm);background:var(--surface);padding:0 10px;font-size:12.5px;font-weight:600;color:var(--primary);outline:none;cursor:pointer;flex:none}
-.mb-switch:focus{border-color:var(--primary)}
-.mailpanel{display:flex;flex-direction:column}
+/* 邮箱切换：占满工具条左列，宽度与邮件列表一致 */
+.mb-switch{width:100%;height:42px;border:1.5px solid var(--outline);border-radius:var(--r-input);background:var(--surface);padding:0 12px;font-size:13px;font-weight:600;color:var(--primary);outline:none;cursor:pointer;box-shadow:var(--sh1);text-overflow:ellipsis;min-width:0}
+.mb-switch:hover{border-color:var(--primary)}
+.mb-switch:focus{border-color:var(--primary);box-shadow:0 0 0 3px rgba(33,150,243,.14)}
+.mb-switch:disabled{color:var(--osv2);background:var(--surface-2);cursor:not-allowed;box-shadow:none}
+/* 侧栏导航可滚动，文件夹展开后不会顶掉底部账号区 */
+#sideNav{flex:1;min-height:0;overflow-y:auto;padding-bottom:4px}
