@@ -198,22 +198,39 @@ async function loadInbox() {
     };
   }
   await refreshFolders();
-  if (!state.folder) { const inbox = state.folders.find((f) => f.name === 'INBOX'); state.folder = inbox?.id || state.folders[0]?.id; }
+  // folder=null → 「全部邮件」聚合视图（默认）
   renderFolderStrip();
   await loadMails(true);
 }
 function renderFolderStrip() {
-  $('#folderStrip').innerHTML = state.folders.map((f) =>
-    `<button class="${f.id === state.folder ? 'on' : ''}" data-fid="${f.id}">${esc(folderCN(f.name))}${f.unread ? ` <span class="fbadge">${f.unread}</span>` : ''}</button>`).join('');
-  $$('#folderStrip [data-fid]').forEach((b) => b.onclick = () => switchFolder(+b.dataset.fid));
-  const f = state.folders.find((x) => x.id === state.folder);
-  $('#mailPanelHd').innerHTML = `<svg style="color:var(--primary)"><use href="#i-inbox"/></svg>${esc(folderCN(f?.name || 'INBOX'))}<span class="badge ${f?.unread ? '' : 'zero'}">${f?.unread || 0}</span>`;
+  const total = state.folders.reduce((a, f) => a + (f.total || 0), 0);
+  const unread = state.folders.reduce((a, f) => a + (f.unread || 0), 0);
+  $('#folderStrip').innerHTML =
+    `<button class="all ${!state.folder ? 'on' : ''}" data-fid="all"><svg style="width:15px;height:15px"><use href="#i-inbox"/></svg>全部邮件 <span class="fbadge">${total}</span></button>` +
+    state.folders.map((f) =>
+      `<button class="${f.id === state.folder ? 'on' : ''}" data-fid="${f.id}">${esc(folderCN(f.name))}${f.unread ? ` <span class="fbadge">${f.unread}</span>` : `<span class="fcount">${f.total || ''}</span>`}</button>`).join('');
+  $$('#folderStrip [data-fid]').forEach((b) => b.onclick = () => {
+    if (b.dataset.fid === 'all') { state.folder = null; renderFolderStrip(); loadMails(); return; }
+    switchFolder(+b.dataset.fid);
+  });
 }
 function switchFolder(id) { const f = state.folders.find((x) => x.id === id); state.folder = id; state.folderName = f?.name || 'INBOX'; renderFolderStrip(); loadMails(); }
 function setFilter(btn, f) { state.filter = f; $$('#segFilter button').forEach((b) => b.classList.toggle('on', b === btn)); renderList(); }
 let qT; $('#q').addEventListener('input', (e) => { clearTimeout(qT); qT = setTimeout(() => { state.q = e.target.value.trim(); loadMails(); }, 350); });
 
 async function loadMails(silent) {
+  if (!state.folder) {
+    // 全部邮件：合并该邮箱所有文件夹
+    const rs = await Promise.all(state.folders.map((f) =>
+      api.req(`/folders/${f.id}/mails?limit=50`).catch(() => ({ items: [], total: 0 }))));
+    let items = rs.flatMap((r) => r.items);
+    items.sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
+    if (state.filter === 'unread') items = items.filter((m) => !m.flags.includes('\\Seen'));
+    state.mails = items.slice(0, 50);
+    $('#listMeta').textContent = `共 ${items.length} 封`;
+    renderList(); if (!silent) renderReader();
+    return;
+  }
   const p = state.q ? `?q=${encodeURIComponent(state.q)}&limit=50` : '?limit=50';
   const r = await api.req(`/folders/${state.folder}/mails${p}`);
   state.mails = state.filter === 'unread' ? r.items.filter((m) => !m.flags.includes('\\Seen')) : r.items;
@@ -317,11 +334,15 @@ async function loadMailboxes() {
     </div>`).join('') : '<div class="empty" style="grid-column:1/-1;padding:48px 0"><svg><use href="#i-mail"/></svg>暂无邮箱 · 用上方表单创建第一个</div>';
 }
 async function createMailbox() {
+  let prefix = $('#mbPrefix').value.trim().toLowerCase();
+  if (!/^[a-z0-9][a-z0-9_-]{1,31}$/.test(prefix)) {
+    toast('前缀仅限小写字母/数字/-/_，2-32 位（大写已自动转小写）'); return;
+  }
   try {
     const r = await api.req('/mailboxes', { method: 'POST',
-      body: JSON.stringify({ prefix: $('#mbPrefix').value.trim(), domain_id: +$('#mbDomain').value || 0 }) });
+      body: JSON.stringify({ prefix, domain_id: +$('#mbDomain').value || 0 }) });
     $('#mbPrefix').value = '';
-    toast('已创建 ' + r.address); loadMailboxes();
+    toast('已创建 ' + r.address + '，密码与登录一致'); loadMailboxes();
   } catch (e) { toast(e.error || '创建失败'); }
 }
 async function toggleMb(id, active) {

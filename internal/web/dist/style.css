@@ -174,7 +174,7 @@ svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.7;stroke
 .seg button{height:34px;padding:0 16px;border-radius:8px;font-size:13px;font-weight:500;color:var(--osv);transition:all .15s}
 .seg button.on{background:var(--surface);color:var(--primary);font-weight:600;box-shadow:var(--sh1)}
 .list-meta{font-size:12.5px;color:var(--osv);margin-left:auto}
-.inbox-grid{display:grid;grid-template-columns:280px 1fr;gap:16px;height:calc(100vh - 210px);width:100%}
+.inbox-grid{display:grid;grid-template-columns:250px 1fr;gap:16px;height:calc(100vh - 165px);width:100%}
 .mailpanel{background:var(--surface);border-radius:var(--r-md);box-shadow:var(--sh1);display:flex;flex-direction:column;overflow:hidden}
 .mailpanel .hd{padding:14px 18px;border-bottom:1px solid var(--line);font-size:13.5px;font-weight:600;display:flex;align-items:center;gap:8px}
 .mailpanel .hd .badge{margin-left:auto}
@@ -283,10 +283,10 @@ svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.7;stroke
 @media(max-width:1100px){.stat-grid{grid-template-columns:repeat(2,1fr)}.dash-row{grid-template-columns:1fr}.inbox-grid{grid-template-columns:1fr;height:auto}.maillist{max-height:400px}}
 
 /* ===== 工程版补充 ===== */
-.folder-strip{display:flex;flex-wrap:wrap;gap:6px;padding:10px 14px;border-bottom:1px solid var(--line);flex:none}
-.folder-strip button{flex:none;padding:5px 12px;border-radius:8px;font-size:12.5px;font-weight:500;color:var(--osv);background:var(--surface-2)}
-.folder-strip button.on{background:var(--pc);color:var(--on-pc)}
-.folder-strip button:hover:not(.on){background:var(--surface-3)}
+
+
+
+
 .apw-box{font-family:ui-monospace,monospace;font-size:17px;letter-spacing:1px;background:var(--surface-2);border-radius:10px;padding:14px;text-align:center;color:var(--primary);user-select:all;margin-top:10px;word-break:break-all}
 #app{display:none}
 #app.on{display:flex}
@@ -300,3 +300,17 @@ body.has-fab .fab{display:inline-flex}
 #mbCards{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px}
 #mbCards .panel{margin-bottom:0}
 @media(max-width:760px){#mbCards{grid-template-columns:1fr}}
+/* ===== 侧栏邮箱切换 + 文件夹子导航（默认显示） ===== */
+.side-folders{display:flex;flex-direction:column;gap:2px;padding:0 12px 10px}
+.side-folders button{display:flex;align-items:center;gap:8px;width:100%;height:36px;padding:0 10px;border-radius:var(--r-xs);font-size:13px;color:var(--osv);text-align:left;transition:background .15s}
+.side-folders button:hover{background:var(--surface-2)}
+.side-folders button.on{background:var(--pc);color:var(--on-pc);font-weight:600}
+.side-folders .fbadge{background:var(--primary);color:var(--on-primary);border-radius:6px;font-size:10.5px;padding:0 6px;font-weight:700;margin-left:auto}
+.fbadge{background:var(--primary);color:var(--on-primary);border-radius:6px;font-size:10.5px;padding:0 5px;font-weight:600}
+
+.fcount{margin-left:auto;color:var(--osv2);font-size:11.5px}
+
+/* 邮箱切换：收件箱列表上方，与列表同宽 */
+.mb-switch{width:100%;height:38px;margin:10px 0 0;border:2px solid var(--outline);border-radius:var(--r-sm);background:var(--surface);padding:0 10px;font-size:12.5px;font-weight:600;color:var(--primary);outline:none;cursor:pointer;flex:none}
+.mb-switch:focus{border-color:var(--primary)}
+.mailpanel{display:flex;flex-direction:column}
