@@ -4,7 +4,7 @@ import json, os, re, smtplib, ssl, subprocess, sys, time, imaplib, poplib, urlli
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
-BASE = os.environ.get('PE_BASE', 'http://localhost:8080/api/v1')
+BASE = os.environ.get('PE_BASE', 'http://localhost:9000/api/v1')
 TAG = str(os.getpid())[-4:]  # 幂等后缀：可重复跑
 PASS_N = 0; FAIL = []
 def ok(name, cond, extra=''):
@@ -102,12 +102,20 @@ st, _ = http(f'/folders/{INBOX}/mails', token='faketoken'); ok('无效 token 列
 st, r = http('/admin/stats', token=T); ok('管理员 stats', st == 200)
 st, r = http(f'/mails/{MID + 999999}', token=T); ok('不存在邮件 404/403', st in (403, 404))
 
-print('=== 5. 撰写与出站（smarthost 回环） ===')
-st, r = http(f'/mailboxes/{MB}/compose', {'to': MBOX, 'subject': 'Roundtrip self', 'text': 'loop body'}, token=T, method='POST')
-ok('撰写入队', st == 200)
+print('=== 5. 撰写发送 ===')
+# 本机收件人：直投对方收件箱，不走 MX（同域收发不依赖公网 DNS）
+st, r = http(f'/mailboxes/{MB}/compose', {'to': MBOX, 'subject': 'Roundtrip self', 'text': 'local body'}, token=T, method='POST')
+ok('撰写(本机收件人)', st == 200 and r.get('local') is True, str(r))
+st, r = http(f'/folders/{INBOX}/mails?q=Roundtrip', token=T); ok('本机直投送达', r['total'] >= 1, f"total={r.get('total')}")
+# 外部收件人：入出站队列
+st, r = http(f'/mailboxes/{MB}/compose', {'to': 'noreply@service-a.com', 'subject': 'Outbound test', 'text': 'x'}, token=T, method='POST')
+ok('撰写(外部收件人)入队', st == 200 and r.get('local') is False, str(r))
 st, r = http('/queue', token=T); ok('队列接口', st == 200 and len(r.get('items', [])) >= 1)
-time.sleep(24)
-st, r = http(f'/folders/{INBOX}/mails?q=Roundtrip', token=T); ok('出站回环送达', r['total'] >= 1, f"total={r.get('total')}")
+# 已暂停收发的本地邮箱应拒发
+st, _ = http(f'/mailboxes/{MB}', {'active': False}, token=T, method='PATCH')
+st2, r2 = http(f'/mailboxes/{MB}/compose', {'to': MBOX, 'subject': 'to disabled', 'text': 'x'}, token=T, method='POST')
+ok('发往已暂停邮箱被拒', st2 == 400, f"got {st2} {r2}")
+http(f'/mailboxes/{MB}', {'active': True}, token=T, method='PATCH')
 
 print('=== 6. IMAP ===')
 M = imaplib.IMAP4('127.0.0.1', 2143)

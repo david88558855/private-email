@@ -74,6 +74,7 @@ function renderNav() {
 
 async function showView(v) {
   state.view = v;
+  localStorage.setItem('pe_view', v); // 刷新后回到同一页
   if (v === 'admin') state.adminConsole = true;
   $$('.view').forEach((e) => e.classList.remove('on'));
   $('#v-' + v).classList.add('on');
@@ -141,7 +142,15 @@ async function boot() {
   $('#sideRole').textContent = state.me.role === 'admin' ? '管理员' : '用户工作台';
   $('#sideMail').textContent = state.mb?.address || '';
   renderNav();
-  showView('dashboard');
+  // 刷新/重开页面回到上次所在页面与文件夹，不强制跳回仪表板
+  const lastView = localStorage.getItem('pe_view') || '';
+  const lastFolder = localStorage.getItem('pe_folder') || '';
+  if (lastFolder && state.mb) {
+    const lf = state.folders.find((x) => x.name === lastFolder);
+    if (lf) state.folder = lf.id;
+  }
+  const viewOK = VIEWS[lastView] && !(VIEWS[lastView].adminOnly && state.me.role !== 'admin');
+  showView(viewOK ? lastView : 'dashboard');
   setInterval(async () => {
     if (state.view === 'inbox' && !state.q && state.folder) { await refreshFolders(); await loadMails(true); }
   }, 8000);
@@ -241,6 +250,7 @@ async function pickFolder(fid, name) {
   if (!f && name) { toast('文件夹未就绪，请稍后重试'); return; }
   state.folder = f ? f.id : null;
   state.folderName = f ? f.name : 'INBOX';
+  localStorage.setItem('pe_folder', f ? f.name : '');
   if (state.view === 'inbox') { renderFolderStrip(); await loadMails(); }
   else await showView('inbox');
 }
@@ -272,9 +282,9 @@ function renderList() {
   if (!state.mails.length) { box.innerHTML = '<div class="empty"><svg><use href="#i-mail"/></svg>暂无邮件</div>'; return; }
   box.innerHTML = state.mails.map((m) => `
     <div class="m-item ${state.mail?.id === m.id ? 'on' : ''} ${m.flags.includes('\\Seen') ? '' : 'unread'}" onclick="openMail(${m.id})">
-      <div class="l1"><span class="from">${esc(m.sender)}</span><span class="time">${fmtTime(m.created_at)}</span></div>
-      <div class="l2"><span class="subj">${m.subject ? esc(m.subject) : '(无主题)'}</span>
-        <span>${m.code ? `<span class="snip">${esc(m.code)}</span>` : ''}${m.spam_score >= 4 ? '<span class="snip" style="color:var(--error)">可疑</span>' : ''}<span class="hint">${fmtSize(m.size)}</span></span></div>
+      <div class="r1"><span class="from">${esc(m.sender)}</span><span class="time">${fmtTime(m.created_at)}</span></div>
+      <div class="r2"><span class="subj">${m.subject ? esc(m.subject) : '(无主题)'}</span>
+        <span class="r2meta">${m.code ? `<span class="snip">${esc(m.code)}</span>` : ''}${m.spam_score >= 4 ? '<span class="snip" style="color:var(--error)">可疑</span>' : ''}<span class="meta-size">${fmtSize(m.size)}</span></span></div>
     </div>`).join('');
 }
 async function openMail(id) {
@@ -286,16 +296,19 @@ function renderReader() {
   if (!state.mail) { box.innerHTML = '<div class="empty"><svg><use href="#i-mail"/></svg>选择左侧邮件查看内容</div>'; return; }
   const m = state.mail;
   box.innerHTML = `
-    <div class="mail-head">
+    <div class="hd">
       <h3>${m.subject ? esc(m.subject) : '(无主题)'}</h3>
-      <div class="mh-meta">
+      <div class="meta">
         <div class="avatar">${esc((m.sender || '?')[0].toUpperCase())}</div>
-        <div style="flex:1;min-width:0"><b>${esc(m.sender)}</b><div class="hint" style="margin:0">→ ${esc(m.to)} · ${esc((m.created_at || '').replace('T', ' ').slice(0, 19))} · ${fmtSize(m.size)}</div></div>
-        <button class="iconbtn" title="下载 EML" onclick="location.href='/api/v1/mails/${m.id}/raw'"><svg><use href="#i-att"/></svg></button>
-        <button class="iconbtn" title="删除" style="color:var(--error)" onclick="delMail(${m.id})"><svg><use href="#i-del"/></svg></button>
+        <div class="who" style="flex:1;min-width:0"><b>${esc(m.sender)}</b>
+          <span>→ ${esc(m.to)} · ${esc((m.created_at || '').replace('T', ' ').slice(0, 19))} · ${fmtSize(m.size)}</span></div>
+        <div class="acts">
+          <button class="iconbtn" title="下载 EML" onclick="location.href='/api/v1/mails/${m.id}/raw'"><svg><use href="#i-att"/></svg></button>
+          <button class="iconbtn" title="删除" style="color:var(--error)" onclick="delMail(${m.id})"><svg><use href="#i-del"/></svg></button>
+        </div>
       </div>
     </div>
-    <div class="mail-body" id="mailBody"></div>`;
+    <div class="body" id="mailBody"></div>`;
   const body = $('#mailBody');
   if (m.code) {
     body.innerHTML = `<div class="code-callout"><span>验证码</span><b>${esc(m.code)}</b><span>点击复制</span></div>`;
@@ -304,7 +317,6 @@ function renderReader() {
   if (m.html_body) {
     const f = document.createElement('iframe');
     f.className = 'mail-frame'; f.sandbox = ''; // 全禁隔离
-    f.style.height = `calc(100% - ${m.code ? 74 : 0}px)`;
     body.appendChild(f);
     f.srcdoc = `<!DOCTYPE html><html><head><meta charset="utf-8"><base target="_blank">
       <style>body{font-family:-apple-system,'Segoe UI','PingFang SC',sans-serif;padding:20px;color:#222;background:#fff}</style></head>
@@ -358,10 +370,9 @@ async function loadMailboxes() {
   }
   $('#mbCards').innerHTML = state.mailboxes.length ? state.mailboxes.map((mb, i) => `
     <div class="panel" style="margin-bottom:14px">
-      <h4><svg style="color:var(--primary)"><use href="#i-mail"/></svg><span class="mb-addr">${esc(mb.address)}</span>
-        ${mb.is_active ? '' : '<span class="snip" style="color:var(--error)">已停用</span>'}</h4>
+      <h4><svg style="color:var(--primary)"><use href="#i-mail"/></svg><span class="mb-addr">${esc(mb.address)}</span></h4>
       <div class="mb-acts">
-        <span class="hint">${mb.is_active ? '收发正常' : '已暂停收发'}</span>
+        <span class="hint">${mb.is_active ? '收发正常' : '已暂停收发<span class="snip" style="color:var(--error)">已停用</span>'}</span>
         <button class="btn text" onclick="toggleMb(${mb.id}, ${mb.is_active ? 'false' : 'true'})">${mb.is_active ? '停用' : '启用'}</button>
         ${state.mb?.id === mb.id
           ? '<span class="btn text default-tag" title="当前默认邮箱">默认</span>'

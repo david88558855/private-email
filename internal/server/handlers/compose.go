@@ -63,13 +63,29 @@ func (h *MailHandler) Compose(c *gin.Context) {
 			log.Printf("存 Sent 副本失败: %v", err)
 		}
 	}
-	// 入投递队列（失败返回 500——用户需知道没发出去）
+
+	// 收件人在本机：直接投递到对方收件箱，不走进出站队列
+	// （同域收发若依赖 MX 回环，需要域名有公网 DNS 且 25 端口可达，家庭/内网部署必然失败）
+	if toID, active, found := h.Store.MailboxStateByAddress(req.To); found {
+		if !active {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "收件邮箱已暂停收发，邮件未发送"})
+			return
+		}
+		if err := h.Store.DeliverLocal(toID, mb.Address, req.To, req.Subject, raw, req.Text); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "本地投递失败：" + err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"ok": true, "local": true})
+		return
+	}
+
+	// 外部地址：入投递队列（失败返回 500——用户需知道没发出去）
 	if _, err := h.Store.DB.Exec(`INSERT INTO mail_queue(mailbox_id, from_addr, to_addr, raw_blob, next_try_at)
 		VALUES(?,?,?,?,datetime('now'))`, mbID, mb.Address, req.To, raw); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "入队失败，请重试"})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"ok": true})
+	c.JSON(http.StatusOK, gin.H{"ok": true, "local": false})
 }
 
 func stringsIndex(s, sub string) int {

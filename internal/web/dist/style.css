@@ -188,11 +188,18 @@ svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.7;stroke
 .m-item.on{background:var(--pc)}
 .m-item.on::before{content:'';position:absolute;left:0;top:12px;bottom:12px;width:3px;border-radius:2px;background:var(--primary)}
 .m-item .r1{display:flex;align-items:center;gap:8px}
-.m-item .from{font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1}
+/* 未读蓝点：已读时保留同尺寸透明占位，保证两种状态文字左缘一致 */
+.m-item .r1::before{content:'';width:6px;height:6px;border-radius:50%;flex:none;background:transparent}
+.m-item.unread .r1::before{background:var(--primary)}
+.m-item .from{font-size:13px;font-weight:400;color:var(--osv2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1}
+.m-item.unread .from{font-weight:500;color:var(--osv)}
 .m-item .time{font-size:11px;color:var(--osv2);flex:none}
-.m-item .r2{display:flex;align-items:center;gap:8px;margin-top:3px}
-.m-item .subj{font-size:12.5px;color:var(--osv);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1}
-.m-item .r2 .snip{flex:none}
+.m-item .r2{display:flex;align-items:center;gap:8px;margin-top:4px}
+.m-item .subj{font-size:12.5px;color:var(--osv2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1}
+.m-item.unread .subj{color:var(--osv)}
+.m-item .r2meta{display:flex;align-items:center;gap:8px;flex:none}
+.m-item .r2meta .snip{height:20px;padding:0 7px;font-size:11px;border-radius:6px}
+.m-item .meta-size{font-size:11px;color:var(--osv2);flex:none}
 .unread-dot{width:7px;height:7px;border-radius:50%;background:var(--primary);flex:none}
 .reader{background:var(--surface);border-radius:var(--r-md);box-shadow:var(--sh1);display:flex;flex-direction:column;overflow:hidden}
 .reader .empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;color:var(--osv2)}
@@ -206,7 +213,10 @@ svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.7;stroke
 .reader .meta .who b{display:block;font-size:13.5px}
 .reader .meta .who span{font-size:11.5px;color:var(--osv)}
 .reader .meta .acts{margin-left:auto;display:flex;gap:4px}
-.reader .body{flex:1;overflow-y:auto;padding:16px 22px}
+.reader .body{flex:1;min-height:0;display:flex;flex-direction:column;gap:12px;overflow-y:auto;padding:16px 22px}
+/* 正文容器原本就有的两个渲染分支：HTML iframe 与纯文本段落 */
+.reader .body .mail-frame{width:100%;flex:1 1 auto;min-height:320px;border:0;border-radius:var(--r-sm);background:#fff}
+.reader .body .plain{white-space:pre-wrap;word-break:break-word;font-size:13.5px;line-height:1.75;color:var(--osv)}
 .code-callout{display:flex;align-items:center;gap:14px;background:var(--pc);border:1px solid rgba(33,150,243,.25);border-radius:var(--r-md);padding:14px 18px;margin-bottom:14px;cursor:pointer;transition:box-shadow .18s}
 .code-callout:hover{box-shadow:var(--sh1)}
 .code-callout .lbl{font-size:12px;color:var(--on-pc);font-weight:600}
@@ -312,7 +322,7 @@ body.has-fab .fab{display:inline-flex}
 #mbCards .panel h4 .snip{flex:none;white-space:nowrap}
 /* 邮箱卡操作区：状态独占一行，按钮一律横向且不被压缩变形 */
 .mb-acts{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-top:12px}
-.mb-acts .hint{flex:1 1 100%}
+.mb-acts .hint{flex:1 1 100%;display:flex;align-items:center;gap:8px}
 .mb-acts .btn{flex:none;white-space:nowrap;padding:0 12px}
 /* 「默认」占「设为默认」原位，仅作状态标识不可点 */
 .mb-acts .default-tag{color:var(--osv2);pointer-events:none;cursor:default}

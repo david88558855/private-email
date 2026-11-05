@@ -131,7 +131,7 @@ func (s *session) Data(r io.Reader) error {
 			return &smtp.SMTPError{Code: 451, Message: "delivery failed"}
 		}
 		// 转发规则（M4 投递）
-		enqueueForwards(s.be.Store, mb.ID, s.from, raw)
+		s.be.Store.EnqueueForwards(mb.ID, s.from, raw)
 		log.Printf("SMTP 收信 %s -> %s (%dB, spam=%.1f, code=%s)", s.from, addr, len(raw), score, code)
 	}
 	return nil
@@ -158,20 +158,6 @@ func extractCode(st *store.Store, text string) string {
 		return mailutil.ExtractCode(text, nil)
 	}
 	return mailutil.ExtractCode(text, rows)
-}
-
-func enqueueForwards(st *store.Store, mailboxID int64, from string, raw []byte) {
-	rows, err := st.DB.Query(`SELECT target FROM forward_rules WHERE mailbox_id=? AND is_active=1`, mailboxID)
-	if err != nil {
-		return
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var target string
-		if rows.Scan(&target) == nil && target != "" {
-			st.EnqueueForward(mailboxID, from, target, raw)
-		}
-	}
 }
 
 // Serve 启动 SMTP 三个监听（25 STARTTLS / 587 submission / 465 隐式 TLS）。

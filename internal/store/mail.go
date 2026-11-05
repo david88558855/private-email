@@ -212,6 +212,45 @@ func (s *Store) EnqueueForward(mailboxID int64, from, to string, raw []byte) {
 		mailboxID, from, to, raw)
 }
 
+// EnqueueForwards 按转发规则把邮件投递入队（无规则则什么都不做）。
+func (s *Store) EnqueueForwards(mailboxID int64, from string, raw []byte) {
+	rows, err := s.DB.Query(`SELECT target FROM forward_rules WHERE mailbox_id=? AND is_active=1`, mailboxID)
+	if err != nil {
+		return
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var target string
+		if rows.Scan(&target) == nil && target != "" {
+			s.EnqueueForward(mailboxID, from, target, raw)
+		}
+	}
+}
+
+// DeliverLocal 直投本机邮箱的 INBOX（同域收发不走出站，避免依赖公网 DNS/MX）。
+func (s *Store) DeliverLocal(mailboxID int64, sender, recipient, subject string,
+	raw []byte, textBody string) error {
+	folderID, err := s.FolderID(mailboxID, "INBOX")
+	if err != nil {
+		return err
+	}
+	if _, _, err := s.InsertMail(folderID, sender, recipient, subject, raw, "", "", 0, textBody); err != nil {
+		return err
+	}
+	s.EnqueueForwards(mailboxID, sender, raw)
+	return nil
+}
+
+// MailboxStateByAddress 按地址查邮箱（不区分是否启用），用于区分「不存在」与「已暂停收发」。
+func (s *Store) MailboxStateByAddress(addr string) (id int64, active bool, found bool) {
+	var a int
+	if err := s.DB.QueryRow(`SELECT id, is_active FROM mailboxes WHERE lower(address)=lower(?)`, addr).
+		Scan(&id, &a); err != nil {
+		return 0, false, false
+	}
+	return id, a == 1, true
+}
+
 // RecentMail 工作台最近邮件。
 type RecentMail struct {
 	ID        int64  `json:"id"`

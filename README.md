@@ -67,7 +67,7 @@ Go 1.27 · Gin · modernc.org/sqlite（纯 Go，无 CGO）· go:embed 内嵌 Web
 4. 生成自签 TLS 证书 `data/certs/server.crt`（10 年有效）
 5. 创建管理员 **admin / admin**（**请立即登录改密**）
 
-Web 控制台：<http://localhost:8080>
+Web 控制台：<http://localhost:9000>
 
 > 首次启动**不会**自动创建域名或邮箱。登录后到「后台管理 → 域名」添加域名，再回「邮箱管理」建邮箱。
 
@@ -94,7 +94,7 @@ Docker：
 ```bash
 docker build -t private-email .
 docker run -d --name mail \
-  -p 8080:8080 -p 25:25 -p 587:587 -p 465:465 \
+  -p 9000:9000 -p 25:25 -p 587:587 -p 465:465 \
   -p 143:143 -p 993:993 -p 110:110 -p 995:995 \
   -v $PWD/data:/app/data private-email
 ```
@@ -105,7 +105,7 @@ docker run -d --name mail \
 
 | 用途 | 默认 | 配置键 |
 |---|---|---|
-| Web / API | `:8080` | `http.listen`（也可用 `-port`） |
+| Web / API | `:9000` | `http.listen`（也可用 `-port`） |
 | SMTP 收信 | `:25` | `smtp.listen` |
 | SMTP 提交（需认证） | `:587` | `smtp.submission` |
 | SMTPS 隐式 TLS | `:465` | `smtp.tls` |
@@ -121,7 +121,7 @@ docker run -d --name mail \
 
 ```yaml
 http:
-  listen: ":8080"
+  listen: ":9000"
 smtp:
   listen: ":25"
   submission: ":587"
@@ -194,7 +194,7 @@ make build VERSION=v2.2.0
 
 | 服务 | 端口 |
 |---|---|
-| HTTP | 8080 |
+| HTTP | 9000 |
 | SMTP / Submission / SMTPS | 2525 / 2587 / 9465 |
 | IMAP / IMAPS | 2143 / 9943 |
 | POP3 / POP3S | 2110 / 9955 |
@@ -202,7 +202,7 @@ make build VERSION=v2.2.0
 ```bash
 # data/config.yaml 里把上面这些端口配好，启动服务后：
 python3 tools/e2e_suite.py
-# 可用环境变量覆盖：PE_BASE（默认 http://localhost:8080/api/v1）、PE_PW（默认 admin）
+# 可用环境变量覆盖：PE_BASE（默认 http://localhost:9000/api/v1）、PE_PW（默认 admin）
 ```
 
 其中「出站回环送达」依赖测试域名能被 DNS 解析（`.test` 域名默认不可解析），

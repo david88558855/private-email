@@ -32,7 +32,7 @@ func main() {
 	var httpFlag string
 	var showVersion bool
 	flag.StringVar(&dataFlag, "data", "", "数据目录（默认：二进制所在目录/data）")
-	flag.StringVar(&httpFlag, "port", "", "Web 端口（默认 :8080，如 -port 8080；优先于配置文件）")
+	flag.StringVar(&httpFlag, "port", "", "Web 端口（默认 :9000，如 -port 8080；优先于配置文件）")
 	flag.BoolVar(&showVersion, "version", false, "打印版本")
 	flag.Parse()
 	if httpFlag != "" {

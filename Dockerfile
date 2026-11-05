@@ -12,5 +12,5 @@ COPY --from=build /out/private-email /private-email
 COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 WORKDIR /app
 VOLUME /app/data
-EXPOSE 8080 25 465 587 143 993 110 995
+EXPOSE 9000 25 465 587 143 993 110 995
 ENTRYPOINT ["/private-email", "-data", "/app/data"]
