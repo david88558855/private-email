@@ -75,7 +75,11 @@ function renderNav() {
 async function showView(v) {
   state.view = v;
   localStorage.setItem('pe_view', v); // 刷新后回到同一页
-  if (v === 'admin') state.adminConsole = true;
+  if (v === 'admin') {
+    state.adminConsole = true;
+    state.admTab = localStorage.getItem('pe_adm_tab') || 'ov'; // 刷新后回到上次的子页面
+    applyAdmTab();
+  }
   $$('.view').forEach((e) => e.classList.remove('on'));
   $('#v-' + v).classList.add('on');
   $('#viewTitle').textContent = v === 'admin' ? '管理后台' : VIEWS[v].title;
@@ -86,7 +90,9 @@ async function showView(v) {
     settings: loadSettings, admin: loadAdmin };
   try { await (loaders[v] || (() => {}))(); } catch (e) { if (e.message !== 'unauthorized') toast(e.error || '加载失败'); }
 }
-function admTab(k) { state.admTab = k; ['ov', 'users', 'domains', 'queue', 'conf'].forEach((t) => $('#a-' + t).style.display = t === k ? '' : 'none'); renderNav(); loadAdmin(); }
+const ADM_TABS = ['ov', 'users', 'domains', 'queue', 'conf'];
+function applyAdmTab() { ADM_TABS.forEach((t) => { const el = $('#a-' + t); if (el) el.style.display = t === state.admTab ? '' : 'none'; }); }
+function admTab(k) { state.admTab = k; localStorage.setItem('pe_adm_tab', k); applyAdmTab(); renderNav(); loadAdmin(); }
 function backUser() { state.adminConsole = false; showView('dashboard'); }
 
 /* ---------- 登录 ---------- */
@@ -137,7 +143,9 @@ async function boot() {
   $('#sideName').textContent = state.me.username;
   $('#sideAvatar').textContent = initial;
   state.mailboxes = (await api.req('/mailboxes')).items;
-  state.mb = state.mailboxes[0] || null;
+  const savedMb = localStorage.getItem('pe_mb');
+  state.mb = state.mailboxes.find((m) => String(m.id) === savedMb) || state.mailboxes[0] || null;
+  if (state.mb) localStorage.setItem('pe_mb', state.mb.id);
   if (state.mb) await refreshFolders();
   $('#sideRole').textContent = state.me.role === 'admin' ? '管理员' : '用户工作台';
   $('#sideMail').textContent = state.mb?.address || '';
@@ -207,6 +215,7 @@ async function loadInbox() {
     sel.onchange = async () => {
       state.mb = state.mailboxes.find((m) => m.id === +sel.value);
       if (!state.mb) return;
+      localStorage.setItem('pe_mb', state.mb.id);
       state.folder = null; state.folderName = 'INBOX'; state.mail = null;
       $('#sideMail').textContent = state.mb.address;
       await refreshFolders();
@@ -398,6 +407,7 @@ async function toggleMb(id, active) {
 }
 async function setDefaultMb(id) {
   state.mb = state.mailboxes.find((x) => x.id === id);
+  localStorage.setItem('pe_mb', state.mb.id);
   await refreshFolders(); $('#sideMail').textContent = state.mb.address;
   toast('默认邮箱：' + state.mb.address); loadMailboxes();
 }
