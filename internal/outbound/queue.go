@@ -63,6 +63,25 @@ func (w *Worker) drain() {
 }
 
 func (w *Worker) deliver(id int64, from, to string, raw []byte, attempts int) {
+	// 转发规则指向本站邮箱时，收件人不在公网：直接入库，不再做 MX 查询。
+	// 这里用 InsertIntoInbox（不重跑转发规则），避免 A→B、B→A 互相转发形成死循环。
+	if mbID, active, found := w.Store.MailboxStateByAddress(to); found {
+		if !active {
+			w.Store.DB.Exec(`UPDATE mail_queue SET status='failed', attempts=?, last_error=? WHERE id=?`,
+				attempts+1, "recipient mailbox is paused", id)
+			log.Printf("出站放弃 %s -> %s: 收件邮箱已暂停收发", from, to)
+			return
+		}
+		p := store.ParseFull(&store.MailFull{Raw: raw})
+		if err := w.Store.InsertIntoInbox(mbID, from, to, p.Subject, raw, p.TextBody); err != nil {
+			w.retry(id, attempts, err)
+			return
+		}
+		w.Store.DB.Exec(`UPDATE mail_queue SET status='sent', last_error=NULL WHERE id=?`, id)
+		log.Printf("出站本地投递成功 %s -> %s", from, to)
+		return
+	}
+
 	signed := w.dkimSign(from, raw)
 	var err error
 	if w.Cfg.SMTPClient.Smarthost != "" {
@@ -75,39 +94,91 @@ func (w *Worker) deliver(id int64, from, to string, raw []byte, attempts int) {
 		log.Printf("出站投递成功 %s -> %s", from, to)
 		return
 	}
+	w.retry(id, attempts, err)
+}
+
+// retry 记录失败并按退避表安排下一次尝试，用尽则标记 failed。
+func (w *Worker) retry(id int64, attempts int, err error) {
 	next := attempts + 1
 	if next >= len(retrySchedule) {
 		w.Store.DB.Exec(`UPDATE mail_queue SET status='failed', attempts=?, last_error=? WHERE id=?`,
 			next, err.Error(), id)
-		log.Printf("出站投递失败(放弃) %s -> %s: %v", from, to, err)
+		log.Printf("出站投递失败(放弃) queue=%d: %v", id, err)
 		return
 	}
 	w.Store.DB.Exec(`UPDATE mail_queue SET attempts=?, next_try_at=datetime('now', ?), last_error=? WHERE id=?`,
 		next, fmt.Sprintf("+%d minutes", retrySchedule[next]), err.Error(), id)
-	log.Printf("出站投递重试 %d %s -> %s: %v", next, from, to, err)
+	log.Printf("出站投递重试 %d queue=%d: %v", next, id, err)
 }
 
 func (w *Worker) viaMX(from, to string, raw []byte) error {
 	return w.sendDirect(from, []string{to}, raw)
 }
 
+// 单次投递的整体超时。smtp.SendMail 只做阻塞式读写，遇到吞包的 MX 会挂到
+// 系统 TCP 超时（数分钟），期间整个出站循环都被卡住。
+const deliveryTimeout = 60 * time.Second
+
 func (w *Worker) sendDirect(from string, tos []string, raw []byte) error {
 	domain := tos[0][strings.Index(tos[0], "@")+1:]
 	mxs, err := net.LookupMX(domain)
 	if err != nil || len(mxs) == 0 {
 		// 无 MX 记录时按 RFC 5321 回落 A 记录
-		return smtp.SendMail(domain+":25", nil, from, tos, raw)
+		return sendMailTimeout(domain+":25", from, tos, raw)
 	}
 	var last error
 	for _, mx := range mxs {
 		host := strings.TrimSuffix(mx.Host, ".") + ":25"
-		if err := smtp.SendMail(host, nil, from, tos, raw); err != nil {
+		if err := sendMailTimeout(host, from, tos, raw); err != nil {
 			last = err
 			continue
 		}
 		return nil
 	}
 	return last
+}
+
+// sendMailTimeout 等价于 smtp.SendMail，但整条连接带 deadline，并在对端支持时升级 STARTTLS。
+func sendMailTimeout(addr, from string, tos []string, raw []byte) error {
+	conn, err := net.DialTimeout("tcp", addr, deliveryTimeout)
+	if err != nil {
+		return err
+	}
+	if err := conn.SetDeadline(time.Now().Add(deliveryTimeout)); err != nil {
+		conn.Close()
+		return err
+	}
+	host, _, _ := net.SplitHostPort(addr)
+	cl, err := smtp.NewClient(conn, host)
+	if err != nil {
+		conn.Close() // NewClient 失败时它不接管连接
+		return err
+	}
+	defer cl.Close()
+	if ok, _ := cl.Extension("STARTTLS"); ok {
+		if err := cl.StartTLS(&tls.Config{ServerName: host}); err != nil {
+			return err
+		}
+	}
+	if err := cl.Mail(from); err != nil {
+		return err
+	}
+	for _, to := range tos {
+		if err := cl.Rcpt(to); err != nil {
+			return err
+		}
+	}
+	wc, err := cl.Data()
+	if err != nil {
+		return err
+	}
+	if _, err := wc.Write(raw); err != nil {
+		return err
+	}
+	if err := wc.Close(); err != nil {
+		return err
+	}
+	return cl.Quit()
 }
 
 // dkimSign 查发件域 DKIM 私钥并签名；无密钥则原样返回。

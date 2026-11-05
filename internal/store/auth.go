@@ -8,6 +8,12 @@ func (s *Store) VerifyMailboxAuth(address, password string) (*Mailbox, bool) {
 	if err != nil || mb == nil {
 		return nil, false
 	}
+	// 账号被管理员停用时，Web 侧会立刻 401，但协议侧（IMAP/POP3/SMTP）原本不受影响，
+	// 等于停用只挡住了网页。这里统一按 users.status 判定，App 专用密码一并失效。
+	var status string
+	if err := s.DB.QueryRow(`SELECT status FROM users WHERE id=?`, mb.UserID).Scan(&status); err != nil || status != "active" {
+		return nil, false
+	}
 	var hash string
 	if err := s.DB.QueryRow(`SELECT password FROM mailboxes WHERE id=?`, mb.ID).Scan(&hash); err != nil {
 		return nil, false

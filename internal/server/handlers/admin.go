@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -138,8 +139,16 @@ func (h *MailHandler) UserAdd(c *gin.Context) {
 	address := ""
 	if domainID > 0 {
 		address = req.Username + "@" + domain
-		h.Store.DB.Exec(`INSERT INTO mailboxes(user_id, address, domain_id, password) VALUES(?,?,?,?)`,
-			uid, address, domainID, string(hash))
+		if res, err := h.Store.DB.Exec(`INSERT INTO mailboxes(user_id, address, domain_id, password) VALUES(?,?,?,?)`,
+			uid, address, domainID, string(hash)); err == nil {
+			// 建库即初始化默认文件夹：否则该邮箱收不到信（投递找不到 INBOX），
+			// 一直到用户首次用 IMAP/POP3 登录才被补上。
+			if mbID, e := res.LastInsertId(); e == nil {
+				if e := h.Store.EnsureFolders(mbID); e != nil {
+					log.Printf("初始化文件夹失败 %s: %v", address, e)
+				}
+			}
+		}
 	}
 	c.JSON(http.StatusOK, gin.H{"ok": true, "address": address})
 }
@@ -249,8 +258,12 @@ func (h *MailHandler) Register(c *gin.Context) {
 	var domain string
 	h.Store.DB.QueryRow(`SELECT id, domain FROM domains ORDER BY id LIMIT 1`).Scan(&domainID, &domain)
 	if domainID > 0 {
-		h.Store.DB.Exec(`INSERT INTO mailboxes(user_id, address, domain_id, password) VALUES(?,?,?,?)`,
-			uid, req.Username+"@"+domain, domainID, string(hash))
+		if res, err := h.Store.DB.Exec(`INSERT INTO mailboxes(user_id, address, domain_id, password) VALUES(?,?,?,?)`,
+			uid, req.Username+"@"+domain, domainID, string(hash)); err == nil {
+			if mbID, e := res.LastInsertId(); e == nil {
+				h.Store.EnsureFolders(mbID) // 注册即初始化文件夹，否则收不到信
+			}
+		}
 	}
 	h.Store.DB.Exec(`INSERT INTO audit_logs(user_id, action, ip) VALUES(?, 'register', ?)`, uid, c.ClientIP())
 	// 注册即登录：签发 token

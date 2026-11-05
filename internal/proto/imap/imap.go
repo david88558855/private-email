@@ -97,8 +97,17 @@ func (u *User) GetMailbox(name string) (backend.Mailbox, error) {
 	return nil, backend.ErrNoSuchMailbox
 }
 
-// systemFolders 内置文件夹：改名会打断 SMTP 投递 / 已发送副本 / 删除进垃圾箱等依赖。
+// systemFolders 内置文件夹：改名/删除会打断 SMTP 投递 / 已发送副本 / 删除进垃圾箱等依赖。
 var systemFolders = map[string]bool{"INBOX": true, "Sent": true, "Drafts": true, "Trash": true}
+
+// isSystemFolder 判定内置文件夹。INBOX 在 IMAP 里大小写不敏感，
+// 否则 CreateMailbox("inbox") 会另建一个与 INBOX 并存的同名文件夹。
+func isSystemFolder(name string) bool {
+	if strings.EqualFold(name, "INBOX") {
+		return true
+	}
+	return systemFolders[name]
+}
 
 func validFolderName(name string) bool {
 	return name != "" && len(name) <= 64 && !strings.ContainsAny(name, "\r\n")
@@ -108,7 +117,7 @@ func (u *User) CreateMailbox(name string) error {
 	if !validFolderName(name) {
 		return fmt.Errorf("invalid folder name")
 	}
-	if systemFolders[name] {
+	if isSystemFolder(name) {
 		return fmt.Errorf("folder already exists")
 	}
 	_, err := u.be.Store.DB.Exec(`INSERT INTO folders(mailbox_id, name, uid_validity) VALUES(?,?,?)`,
@@ -117,8 +126,9 @@ func (u *User) CreateMailbox(name string) error {
 }
 
 func (u *User) DeleteMailbox(name string) error {
-	if name == "INBOX" {
-		return fmt.Errorf("cannot delete INBOX")
+	// 删掉 Sent 会让发信副本静默丢失，删掉 Trash 会让「删除邮件」整体 500
+	if isSystemFolder(name) {
+		return fmt.Errorf("cannot delete system folder")
 	}
 	_, err := u.be.Store.DB.Exec(`DELETE FROM folders WHERE mailbox_id=? AND name=?`, u.mb.ID, name)
 	return err
@@ -126,7 +136,7 @@ func (u *User) DeleteMailbox(name string) error {
 
 func (u *User) RenameMailbox(old, new string) error {
 	// 重命名 INBOX 会让收信投递找不到目标文件夹，等于整箱失联；Sent/Trash 同理会打断业务路径
-	if systemFolders[old] || systemFolders[new] {
+	if isSystemFolder(old) || isSystemFolder(new) {
 		return fmt.Errorf("cannot rename system folder")
 	}
 	if !validFolderName(new) {

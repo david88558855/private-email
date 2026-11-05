@@ -192,10 +192,37 @@ func (s *Store) DeleteMail(id int64) error {
 	}
 	trashID, err := s.FolderID(mailboxID, "Trash")
 	if err != nil {
-		return fmt.Errorf("trash folder missing: %w", err)
+		// 早期版本允许 IMAP 删掉 Trash，老库里可能已缺失：补建后重试，避免删除功能整体不可用
+		if e := s.EnsureFolders(mailboxID); e != nil {
+			return fmt.Errorf("trash folder missing: %w", err)
+		}
+		if trashID, err = s.FolderID(mailboxID, "Trash"); err != nil {
+			return fmt.Errorf("trash folder missing: %w", err)
+		}
 	}
-	_, err = s.DB.Exec(`UPDATE mails SET folder_id=? WHERE id=?`, trashID, id)
-	return err
+	return s.moveMail(id, trashID)
+}
+
+// moveMail 把邮件移到目标文件夹，并在目标文件夹内重新分配 UID。
+// msg_uid 只保证「同一文件夹内唯一」：各文件夹的 uid_next 都从 1 开始，
+// 直接沿用原 UID 会撞上 UNIQUE(folder_id,msg_uid)，表现为删除失败、返回 500。
+func (s *Store) moveMail(id, dstFolderID int64) error {
+	tx, err := s.DB.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	var uidNext int64
+	if err := tx.QueryRow(`SELECT uid_next FROM folders WHERE id=?`, dstFolderID).Scan(&uidNext); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`UPDATE mails SET folder_id=?, msg_uid=? WHERE id=?`, dstFolderID, uidNext, id); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`UPDATE folders SET uid_next=uid_next+1 WHERE id=?`, dstFolderID); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // OwnsMail 校验邮件归属（folder → mailbox → user）。
@@ -227,14 +254,27 @@ func (s *Store) EnqueueForwards(mailboxID int64, from string, raw []byte) {
 	}
 }
 
-// DeliverLocal 直投本机邮箱的 INBOX（同域收发不走出站，避免依赖公网 DNS/MX）。
-func (s *Store) DeliverLocal(mailboxID int64, sender, recipient, subject string,
+// InsertIntoInbox 把邮件写入该邮箱的 INBOX，不触发转发规则。
+// INBOX 缺失（新用户未初始化 / 老库）时自动补建，避免收信被静默丢弃。
+func (s *Store) InsertIntoInbox(mailboxID int64, sender, recipient, subject string,
 	raw []byte, textBody string) error {
 	folderID, err := s.FolderID(mailboxID, "INBOX")
 	if err != nil {
-		return err
+		if e := s.EnsureFolders(mailboxID); e != nil {
+			return err
+		}
+		if folderID, err = s.FolderID(mailboxID, "INBOX"); err != nil {
+			return err
+		}
 	}
-	if _, _, err := s.InsertMail(folderID, sender, recipient, subject, raw, "", "", 0, textBody); err != nil {
+	_, _, err = s.InsertMail(folderID, sender, recipient, subject, raw, "", "", 0, textBody)
+	return err
+}
+
+// DeliverLocal 直投本机邮箱的 INBOX（同域收发不走出站，避免依赖公网 DNS/MX），并执行其转发规则。
+func (s *Store) DeliverLocal(mailboxID int64, sender, recipient, subject string,
+	raw []byte, textBody string) error {
+	if err := s.InsertIntoInbox(mailboxID, sender, recipient, subject, raw, textBody); err != nil {
 		return err
 	}
 	s.EnqueueForwards(mailboxID, sender, raw)

@@ -16,6 +16,8 @@ const api = {
 
 const FOLDER_CN = { INBOX: '收件箱', Sent: '已发送', Drafts: '草稿箱', Trash: '垃圾箱' };
 const folderCN = (n) => FOLDER_CN[n] || n;
+// 邮件视图的页头标题：全部邮件 / 收件箱 / 已发送 …
+const inboxTitle = () => (state.folder ? folderCN(state.folderName) : '全部邮件');
 const state = { view: 'dashboard', folder: null, folderName: 'INBOX', mail: null, mails: [], filter: 'all',
   mailboxes: [], folders: [], mb: null, me: null, q: '', admTab: 'ov', adminConsole: false, loginMode: 'user', adminDomains: [] };
 
@@ -82,7 +84,7 @@ async function showView(v) {
   }
   $$('.view').forEach((e) => e.classList.remove('on'));
   $('#v-' + v).classList.add('on');
-  $('#viewTitle').textContent = v === 'admin' ? '管理后台' : VIEWS[v].title;
+  $('#viewTitle').textContent = v === 'admin' ? '管理后台' : (v === 'inbox' ? inboxTitle() : VIEWS[v].title);
   document.body.classList.toggle('has-fab', v === 'inbox');
   renderNav();
   const loaders = { dashboard: loadDashboard, inbox: loadInbox, mailboxes: loadMailboxes,
@@ -155,7 +157,8 @@ async function boot() {
   const lastFolder = localStorage.getItem('pe_folder') || '';
   if (lastFolder && state.mb) {
     const lf = state.folders.find((x) => x.name === lastFolder);
-    if (lf) state.folder = lf.id;
+    // folderName 必须一起恢复：它决定页头标题，只恢复 id 会出现「标题写收件箱、高亮在垃圾箱」
+    if (lf) { state.folder = lf.id; state.folderName = lf.name; }
   }
   const viewOK = VIEWS[lastView] && !(VIEWS[lastView].adminOnly && state.me.role !== 'admin');
   showView(viewOK ? lastView : 'dashboard');
@@ -222,6 +225,7 @@ async function loadInbox() {
       const inbox = state.folders.find((f) => f.name === 'INBOX');
       state.folder = inbox?.id || state.folders[0]?.id || null;
       await loadMails(); renderFolderStrip();
+      $('#viewTitle').textContent = inboxTitle();
       toast('已切换：' + state.mb.address);
     };
   }
@@ -231,6 +235,9 @@ async function loadInbox() {
   await loadMails(true);
 }
 const FOLDER_ORDER = ['INBOX', 'Sent', 'Drafts', 'Trash'];
+// 文件夹图标：与侧栏导航同一套 symbol，尺寸由 .side-folders svg 统一控制
+const FOLDER_ICON = { INBOX: 'i-inbox', Sent: 'i-send', Drafts: 'i-draft', Trash: 'i-trash' };
+const folderIcon = (n) => FOLDER_ICON[n] || 'i-mail';
 
 // 文件夹导航：始终渲染 5 项，保持正常配色（不因无邮箱或未加载而置灰）
 function renderFolderStrip() {
@@ -238,13 +245,13 @@ function renderFolderStrip() {
   if (!box) return; // 管理后台导航视图下没有该容器
   const total = state.folders.reduce((a, f) => a + (f.total || 0), 0);
   const inMail = state.view === 'inbox';
-  let html = `<button class="all ${inMail && !state.folder ? 'on' : ''}" data-fid="all">
-    <svg style="width:15px;height:15px"><use href="#i-inbox"/></svg>全部邮件 <span class="fbadge">${total}</span></button>`;
+  let html = `<button class="all ${inMail && !state.folder ? 'on' : ''}" data-fid="all" data-name="">
+    <svg><use href="#i-mail"/></svg>全部邮件 <span class="fbadge">${total}</span></button>`;
   for (const name of FOLDER_ORDER) {
     const f = state.folders.find((x) => x.name === name);
     const cnt = f ? (f.unread ? `<span class="fbadge">${f.unread}</span>` : `<span class="fcount">${f.total || ''}</span>`) : '';
     html += `<button class="${inMail && f && f.id === state.folder ? 'on' : ''}"
-      data-fid="${f ? f.id : ''}" data-name="${name}">${folderCN(name)}${cnt}</button>`;
+      data-fid="${f ? f.id : ''}" data-name="${name}"><svg><use href="#${folderIcon(name)}"/></svg>${folderCN(name)}${cnt}</button>`;
   }
   box.innerHTML = html;
   $$('#folderStrip [data-fid]').forEach((b) => b.onclick = () => pickFolder(b.dataset.fid, b.dataset.name));
@@ -260,7 +267,7 @@ async function pickFolder(fid, name) {
   state.folder = f ? f.id : null;
   state.folderName = f ? f.name : 'INBOX';
   localStorage.setItem('pe_folder', f ? f.name : '');
-  if (state.view === 'inbox') { renderFolderStrip(); await loadMails(); }
+  if (state.view === 'inbox') { $('#viewTitle').textContent = inboxTitle(); renderFolderStrip(); await loadMails(); }
   else await showView('inbox');
 }
 function setFilter(btn, f) { state.filter = f; $$('#segFilter button').forEach((b) => b.classList.toggle('on', b === btn)); renderList(); }

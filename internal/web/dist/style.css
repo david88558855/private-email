@@ -332,6 +332,9 @@ body.has-fab .fab{display:inline-flex}
 .side-folders button{display:flex;align-items:center;gap:9px;width:100%;height:36px;padding:0 12px;border-radius:var(--r-xs);font-size:13px;font-weight:500;color:var(--osv);text-align:left;transition:background .15s,color .15s}
 .side-folders button:hover{background:var(--surface-2)}
 .side-folders button.on{background:var(--pc);color:var(--on-pc);font-weight:600}
+.side-folders button svg{width:18px;height:18px;color:var(--osv2);transition:color .15s}
+.side-folders button:hover svg{color:var(--primary)}
+.side-folders button.on svg{color:var(--primary)}
 .side-folders .fbadge{margin-left:auto;font-weight:700;padding:0 6px}
 .side-folders .fcount{margin-left:auto;color:var(--osv2);font-size:11.5px}
 .fbadge{background:var(--primary);color:var(--on-primary);border-radius:6px;font-size:10.5px;padding:0 5px;font-weight:600}

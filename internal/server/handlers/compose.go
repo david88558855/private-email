@@ -74,6 +74,13 @@ func (h *MailHandler) Compose(c *gin.Context) {
 		return
 	}
 
+	// 先判定收件人状态：已暂停收发的邮箱不能收信，此时不该留下「已发送」副本
+	toID, toActive, toLocal := h.Store.MailboxStateByAddress(req.To)
+	if toLocal && !toActive {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "收件邮箱已暂停收发，邮件未发送"})
+		return
+	}
+
 	// 存 Sent（失败仅记日志，不阻断投递）
 	sentID, err := h.Store.FolderID(mbID, "Sent")
 	if err == nil {
@@ -84,11 +91,7 @@ func (h *MailHandler) Compose(c *gin.Context) {
 
 	// 收件人在本机：直接投递到对方收件箱，不走进出站队列
 	// （同域收发若依赖 MX 回环，需要域名有公网 DNS 且 25 端口可达，家庭/内网部署必然失败）
-	if toID, active, found := h.Store.MailboxStateByAddress(req.To); found {
-		if !active {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "收件邮箱已暂停收发，邮件未发送"})
-			return
-		}
+	if toLocal {
 		if err := h.Store.DeliverLocal(toID, mb.Address, req.To, req.Subject, raw, req.Text); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "本地投递失败：" + err.Error()})
 			return
