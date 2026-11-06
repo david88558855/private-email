@@ -9,6 +9,8 @@ import (
 	"mime"
 	"net/http"
 	"strconv"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/david88558855/private-email/internal/store"
@@ -30,6 +32,15 @@ func (h *MailHandler) Compose(c *gin.Context) {
 	}
 	if c.ShouldBindJSON(&req) != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
+		return
+	}
+	// 头部注入：地址/主题里出现 CR/LF 会把后面的内容顶成独立头部（Bcc: ...）
+	if strings.ContainsAny(req.To, "\r\n") || strings.ContainsAny(req.Subject, "\r\n") {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "地址或主题包含非法字符"})
+		return
+	}
+	if !allowCompose(uid) {
+		c.JSON(http.StatusTooManyRequests, gin.H{"error": "发信过于频繁，请稍后再试"})
 		return
 	}
 	// 与入站同一条上限：正文没有边界时，一个登录用户就能把库和内存撑爆
@@ -107,6 +118,44 @@ func (h *MailHandler) Compose(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"ok": true, "local": false})
+}
+
+// 写信频率限制：登录用户无限制入队时，一个账号就能把 mail_queue
+// 和出站 IP 信誉一起打爆。按用户每分钟 20 封。
+const composePerMin = 20
+
+type composeBucket struct {
+	n     int
+	reset time.Time
+}
+
+var (
+	composeMu  sync.Mutex
+	composeMap = map[int64]*composeBucket{}
+)
+
+func allowCompose(uid int64) bool {
+	now := time.Now()
+	composeMu.Lock()
+	defer composeMu.Unlock()
+	// 顺手清理过期桶，避免 map 只增不减
+	if len(composeMap) > 5000 {
+		for k, v := range composeMap {
+			if now.After(v.reset) {
+				delete(composeMap, k)
+			}
+		}
+	}
+	b, ok := composeMap[uid]
+	if !ok || now.After(b.reset) {
+		composeMap[uid] = &composeBucket{n: 1, reset: now.Add(time.Minute)}
+		return true
+	}
+	if b.n >= composePerMin {
+		return false
+	}
+	b.n++
+	return true
 }
 
 func stringsIndex(s, sub string) int {

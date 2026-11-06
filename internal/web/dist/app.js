@@ -36,7 +36,7 @@ const ADMIN_VIEWS = {
   conf: { title: '系统设置', icon: 'i-tune' },
 };
 
-const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const fmtSize = (n) => n > 1048576 ? (n / 1048576).toFixed(1) + 'MB' : n > 1024 ? (n / 1024).toFixed(0) + 'KB' : n + 'B';
 const fmtTime = (s) => { const d = new Date(s.includes('T') ? s : s.replace(' ', 'T') + 'Z');
   const now = new Date(); return d.toDateString() === now.toDateString() ?
@@ -325,7 +325,7 @@ function renderReader() {
         <div class="who" style="flex:1;min-width:0"><b>${esc(m.sender)}</b>
           <span>→ ${esc(m.to)} · ${esc((m.created_at || '').replace('T', ' ').slice(0, 19))} · ${fmtSize(m.size)}</span></div>
         <div class="acts">
-          <button class="iconbtn" title="下载 EML" onclick="location.href='/api/v1/mails/${m.id}/raw'"><svg><use href="#i-att"/></svg></button>
+          <button class="iconbtn" title="下载 EML" onclick="downloadMail(${m.id})"><svg><use href="#i-att"/></svg></button>
           <button class="iconbtn" title="删除" style="color:var(--error)" onclick="delMail(${m.id})"><svg><use href="#i-del"/></svg></button>
         </div>
       </div>
@@ -341,6 +341,7 @@ function renderReader() {
     f.className = 'mail-frame'; f.sandbox = ''; // 全禁隔离
     body.appendChild(f);
     f.srcdoc = `<!DOCTYPE html><html><head><meta charset="utf-8"><base target="_blank">
+      <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'">
       <style>body{font-family:-apple-system,'Segoe UI','PingFang SC',sans-serif;padding:20px;color:#222;background:#fff}</style></head>
       <body>${m.html_body}</body></html>`;
   } else {
@@ -349,9 +350,23 @@ function renderReader() {
     body.appendChild(d);
   }
 }
+async function downloadMail(id) {
+  // 直接 location.href 不会带 Authorization，接口必然 401；改成 fetch + blob
+  try {
+    const r = await fetch(`/api/v1/mails/${id}/raw`, { headers: { Authorization: 'Bearer ' + api.token } });
+    if (!r.ok) throw new Error('download failed');
+    const blob = await r.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `mail-${id}.eml`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+  } catch (e) { toast('下载失败'); }
+}
 async function delMail(id) {
   await api.req(`/mails/${id}`, { method: 'DELETE' });
-  toast('已移入垃圾箱'); state.mail = null;
+  // 在垃圾箱里删是真删，提示不能还说"移入垃圾箱"
+  toast(state.folderName === 'Trash' ? '已永久删除' : '已移入垃圾箱'); state.mail = null;
   await refreshFolders(); renderFolderStrip(); await loadMails(true); renderReader();
 }
 
@@ -376,7 +391,9 @@ async function sendCompose() {
 /* ---------- 邮箱管理 ---------- */
 async function loadMailboxes() {
   state.mailboxes = (await api.req('/mailboxes')).items;
-  const domains = (await api.req('/domains')).items;
+  const dr = await api.req('/domains');
+  const domains = dr.items || [];
+  const pendingCount = dr.pending_count || 0;
   // 从「没有邮箱」到「刚建好第一个」时自动接管，否则收件箱仍是空的
   if (!state.mb && state.mailboxes.length) {
     state.mb = state.mailboxes[0];
@@ -388,7 +405,11 @@ async function loadMailboxes() {
     $('#mbDomain').innerHTML = domains.map((d) => `<option value="${d.id}">${esc(d.domain)}</option>`).join('');
   } else {
     $('#mbDomain').disabled = true;
-    $('#mbDomain').innerHTML = '<option value="">请先在后台添加域名</option>';
+    // 域名加了但没过验证，和「一个域名都没加」是两回事，提示必须分开，
+    // 否则管理员明明添加过域名，用户却被告知"先添加域名"，排查方向直接跑偏。
+    $('#mbDomain').innerHTML = pendingCount
+      ? `<option value="">有 ${pendingCount} 个域名待管理员验证，暂不能创建邮箱</option>`
+      : '<option value="">请先在后台添加域名</option>';
   }
   $('#mbCards').innerHTML = state.mailboxes.length ? state.mailboxes.map((mb, i) => `
     <div class="panel" style="margin-bottom:14px">
@@ -428,10 +449,18 @@ async function setDefaultMb(id) {
 /* ---------- 规则 ---------- */
 async function loadRules(kind) {
   const mbs = state.mailboxes;
-  const sel = kind === 'forward' ? $('#fwMbx') : null;
-  if (sel) sel.innerHTML = mbs.map((m) => `<option value="${m.id}">${esc(m.address)}</option>`).join('');
-  const items = (await api.req(`/mailboxes/${(kind === 'forward' ? +$('#fwMbx').value : mbs[0]?.id) || mbs[0]?.id}/rules?kind=${kind}`)).items;
+  const sel = kind === 'forward' ? $('#fwMbx') : $('#vfMbx');
   const list = kind === 'forward' ? $('#fwList') : $('#vfList');
+  if (!mbs.length) { if (list) list.innerHTML = '<p class="hint">还没有邮箱，请先在「邮箱管理」创建</p>'; return; }
+  if (sel) {
+    const sig = mbs.map((m) => m.id + ':' + m.address).join('|');
+    if (sel.dataset.sig !== sig) {
+      sel.dataset.sig = sig;
+      sel.innerHTML = mbs.map((m) => `<option value="${m.id}">${esc(m.address)}</option>`).join('');
+    }
+  }
+  const mbId = +(sel?.value || mbs[0].id);
+  const items = (await api.req(`/mailboxes/${mbId}/rules?kind=${kind}`)).items;
   list.innerHTML = items.length ? items.map((r) => `
     <div class="rule-item">
       <div class="ic"><svg><use href="#${kind === 'forward' ? 'i-fwd' : 'i-key'}"/></svg></div>
@@ -440,7 +469,7 @@ async function loadRules(kind) {
     </div>`).join('') : '<p class="hint">暂无规则</p>';
 }
 async function addRule(kind) {
-  const mbId = kind === 'forward' ? +$('#fwMbx').value : state.mailboxes[0]?.id;
+  const mbId = +(kind === 'forward' ? $('#fwMbx').value : $('#vfMbx').value) || state.mailboxes[0]?.id;
   try {
     const body = kind === 'forward' ? { target: $('#fwTarget').value.trim() } : { name: $('#vfName').value.trim() || '自定义规则', pattern: $('#vfPattern').value.trim() };
     await api.req(`/mailboxes/${mbId}/rules?kind=${kind}`, { method: 'POST', body: JSON.stringify(body) });
@@ -449,14 +478,20 @@ async function addRule(kind) {
   } catch (e) { toast(e.error || '添加失败（检查格式）'); }
 }
 async function delRule(kind, id) {
-  const mbId = kind === 'forward' ? +$('#fwMbx').value : state.mailboxes[0]?.id;
+  const mbId = +(kind === 'forward' ? $('#fwMbx').value : $('#vfMbx').value) || state.mailboxes[0]?.id;
   await api.req(`/mailboxes/${mbId}/rules?kind=${kind}&id=${id}`, { method: 'DELETE' });
   toast('已删除'); loadRules(kind);
 }
 $('#fwMbx')?.addEventListener('change', () => loadRules('forward'));
+$('#vfMbx')?.addEventListener('change', () => loadRules('verif'));
 
 /* ---------- 账号设置 ---------- */
 async function loadSettings() {
+  // 没有邮箱时 state.mb 是 null，取 .id 会抛异常，页面只弹「加载失败」
+  if (!state.mb) {
+    $('#apList').innerHTML = '<p class="hint">还没有邮箱，请先在「邮箱管理」创建一个</p>';
+    return;
+  }
   const items = (await api.req(`/mailboxes/${state.mb.id}/app_passwords`)).items;
   $('#apList').innerHTML = items.length ? items.map((a) => `
     <div class="rule-item">
@@ -483,6 +518,17 @@ async function delApw(id) {
   await api.req(`/mailboxes/${state.mb.id}/app_passwords?pid=${id}`, { method: 'DELETE' });
   toast('已撤销'); loadSettings();
 }
+function copyApw() {
+  const v = $('#apwValue').textContent;
+  if (navigator.clipboard?.writeText) {
+    navigator.clipboard.writeText(v).then(() => toast('已复制并关闭')).catch(() => toast('复制失败，请手动选择'));
+  } else {
+    const r = document.createRange(); r.selectNodeContents($('#apwValue'));
+    const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r);
+    toast('已选中，请按 Ctrl+C 复制');
+  }
+  closeDlg('apwDlg');
+}
 $('#apwDlg')?.addEventListener('click', (e) => { if (e.target.id === 'apwDlg') closeDlg('apwDlg'); });
 
 /* ---------- 管理后台 ---------- */
@@ -504,7 +550,7 @@ async function loadAdmin() {
       <tr><td>SMTP ${esc(ports.smtp_listen || '关')} / ${esc(ports.smtp_tls || '关')}</td><td>${ok}</td></tr>
       <tr><td>IMAP ${esc(ports.imap_listen || '关')} / ${esc(ports.imap_tls || '关')}</td><td>${ok}</td></tr>
       <tr><td>POP3 ${esc(ports.pop3_listen || '关')} / ${esc(ports.pop3_tls || '关')}</td><td>${ok}</td></tr>
-      <tr><td>Web 9000</td><td>${ok}</td></tr>`;
+      <tr><td>Web ${location.port || 80}</td><td>${ok}</td></tr>`;
   } else if (t === 'users') {
     const us = (await api.req('/admin/users')).items;
     $('#aUsersTbl').innerHTML = `<tr><th>用户</th><th>邮箱数</th><th>状态</th><th>操作</th></tr>` + us.map((u) => `
@@ -518,10 +564,18 @@ async function loadAdmin() {
   } else if (t === 'domains') {
     const ds = (await api.req('/admin/domains')).items;
     state.adminDomains = ds;
-    $('#aDomainsTbl').innerHTML = `<tr><th>域名</th><th>DKIM 记录</th><th></th></tr>` + (ds.length ? ds.map((d) => `
+    $('#aDomainsTbl').innerHTML = `<tr><th>域名</th><th>验证状态</th><th>DKIM 记录</th><th></th></tr>` + (ds.length ? ds.map((d) => `
       <tr><td><b>${esc(d.domain)}</b><div class="hint">${esc(d.created_at.slice(0, 10))}</div></td>
-      <td>${d.dkim_dns ? `<div class="hint">${esc(d.dkim_dns.host)}</div><button class="btn text" style="height:30px;padding:0 10px;color:var(--primary)" onclick="showDkim(${d.id})">查看完整记录</button>` : '<span class="hint">生成中</span>'}</td>
-      <td><button class="btn text" style="color:var(--error);height:32px;padding:0 10px" onclick="delDomain(${d.id})">删除</button></td></tr>`).join('') : '<tr><td colspan=3 class="hint">暂无域名</td></tr>');
+      <td>${d.status === 'verified'
+        ? '<span class="q-status ok"><span class="dot"></span>已验证</span>'
+        : `<span class="q-status warn"><span class="dot"></span>待验证</span>
+           <div class="hint" style="margin-top:4px;word-break:break-all;line-height:1.5">TXT ${esc(d.verify_host || '')}<br>= ${esc(d.verify_value || '')}</div>
+           <div style="display:flex;gap:4px;margin-top:6px">
+             <button class="btn text" style="height:30px;padding:0 10px;color:var(--primary)" onclick="verifyDomain(${d.id})">检测 DNS</button>
+             <button class="btn text" style="height:30px;padding:0 10px" onclick="forceVerify(${d.id})">跳过验证</button>
+           </div>`}</td>
+      <td>${d.dkim_dns ? `<div class="hint">${esc(d.dkim_dns.host)}</div><button class="btn text" style="height:30px;padding:0 10px;color:var(--primary)" onclick="showDkim(${d.id})">查看完整记录</button>` : '<button class="btn text" style="height:30px;padding:0 10px" onclick="loadAdmin()">未生成 · 重试</button>'}</td>
+      <td><button class="btn text" style="color:var(--error);height:32px;padding:0 10px" onclick="delDomain(${d.id})">删除</button></td></tr>`).join('') : '<tr><td colspan=4 class="hint">暂无域名</td></tr>');
   } else if (t === 'queue') {
     const q = (await api.req('/queue')).items;
     $('#aQueueTbl2').innerHTML = `<tr><th>状态</th><th>发件人</th><th>收件人</th><th>尝试</th><th>时间</th><th>错误</th></tr>` + (q.length ? q.map((r) => `
@@ -582,10 +636,30 @@ async function delDomain(id) {
     toast('域名已删除'); loadAdmin();
   } catch (e) { toast(e.error || '删除失败'); }
 }
+async function verifyDomain(id) {
+  try {
+    await api.req(`/admin/domains/${id}/verify`, { method: 'POST', body: '{}' });
+    toast('域名验证通过'); loadAdmin();
+  } catch (e) {
+    // DNS 查不到时别只弹一句"失败"就完了，直接把旁路给出来。
+    // 内网/测试环境没有可管理的公网 DNS，硬等 TXT 生效等于永远卡住。
+    const msg = (e.error || '验证失败') + '\n\n如果这个域名没有可管理的公网 DNS（内网、测试环境），可以跳过验证直接启用。要跳过吗？';
+    if (confirm(msg)) await forceVerify(id);
+  }
+}
+async function forceVerify(id) {
+  if (!confirm('跳过 DNS 验证后，该域名立即视为已验证，可以创建邮箱并对外发信。\n\n确定继续？')) return;
+  try {
+    await api.req(`/admin/domains/${id}/verify`, { method: 'POST', body: JSON.stringify({ force: true }) });
+    toast('已标记为已验证'); loadAdmin();
+  } catch (e) { toast(e.error || '操作失败'); }
+}
 async function addDomain() {
   try {
     await api.req('/admin/domains', { method: 'POST', body: JSON.stringify({ domain: $('#ndName').value.trim() }) });
-    $('#ndName').value = ''; toast('域名已添加 · DKIM 已生成'); loadAdmin();
+    $('#ndName').value = '';
+    toast('域名已添加 · 待验证，列表中可直接复制 TXT 记录');
+    loadAdmin();
   } catch (e) { toast(e.error || '添加失败'); }
 }
 

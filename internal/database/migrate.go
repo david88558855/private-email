@@ -195,5 +195,29 @@ CREATE TABLE IF NOT EXISTS settings (
 INSERT OR IGNORE INTO settings(key, value) VALUES('registration_enabled', 'false');
 DROP TABLE IF EXISTS invites;
 `,
+		// 004 中文检索（trigram）、标记已读不再重建全文索引、域名验证令牌
+		`
+DROP TRIGGER IF EXISTS mails_fts_ai;
+DROP TRIGGER IF EXISTS mails_fts_ad;
+DROP TRIGGER IF EXISTS mails_fts_au;
+DROP TABLE IF EXISTS mails_fts;
+CREATE VIRTUAL TABLE mails_fts USING fts5(subject, sender, body_text,
+	content='mails', content_rowid='id', tokenize='trigram');
+CREATE TRIGGER mails_fts_ai AFTER INSERT ON mails BEGIN
+	INSERT INTO mails_fts(rowid, subject, sender, body_text) VALUES(new.id, new.subject, new.sender, new.body_text);
+END;
+CREATE TRIGGER mails_fts_ad AFTER DELETE ON mails BEGIN
+	INSERT INTO mails_fts(mails_fts, rowid, subject, sender, body_text) VALUES('delete', old.id, old.subject, old.sender, old.body_text);
+END;
+-- 只在这些列变化时重建索引：更新 flags（标记已读）不再触发全文重排
+CREATE TRIGGER mails_fts_au AFTER UPDATE OF subject, sender, body_text ON mails BEGIN
+	INSERT INTO mails_fts(mails_fts, rowid, subject, sender, body_text) VALUES('delete', old.id, old.subject, old.sender, old.body_text);
+	INSERT INTO mails_fts(rowid, subject, sender, body_text) VALUES(new.id, new.subject, new.sender, new.body_text);
+END;
+INSERT INTO mails_fts(mails_fts) VALUES('rebuild');
+ALTER TABLE domains ADD COLUMN verify_token TEXT NOT NULL DEFAULT '';
+CREATE INDEX IF NOT EXISTS idx_mails_folder_uid ON mails(folder_id, msg_uid);
+INSERT OR IGNORE INTO settings(key, value) VALUES('queue_retention_days', '7');
+`,
 	}...)
 }

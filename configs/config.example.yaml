@@ -1,9 +1,9 @@
 http:
   listen: ":9000"
 smtp:
-  listen: ":25"
-  submission: ":587"
-  tls: ":465"
+  listen: ":25"           # 对外收信
+  submission: ":587"      # 客户端提交（需认证，可发外域）
+  tls: ":465"             # SMTPS 隐式 TLS
   max_size_mb: 25
 imap:
   listen: ":143"
@@ -12,10 +12,21 @@ pop3:
   listen: ":110"
   tls: ":995"
 smtp_client:
-  smarthost: ""        # 如 "relay.example.com:587"，留空直连 MX
+  smarthost: ""           # 如 "relay.example.com:587"，留空直连 MX
+  username: ""
+  password: ""
+  insecure_skip_verify: false
 tls:
-  cert_file: ""        # 留空自动自签
+  cert_file: ""           # 留空自动自签
   key_file: ""
+  hostname: ""            # 自签证书里要包含的主机名，如 mail.example.com
 security:
-  jwt_secret: ""       # 留空首次启动自动生成
+  jwt_secret: ""          # 留空首次启动自动生成并写回（不会再用空密钥）
   login_rate_per_min: 10
+  allow_insecure_auth: false       # 是否允许在明文端口用密码登录（公网务必 false）
+                                   # PLAIN 的 base64 不是加密：开启前务必读 README「AUTH=PLAIN 与明文认证」
+  insecure_auth_cidrs: []          # 允许明文认证的内网来源网段，如 ["192.168.10.0/24"]
+                                   # 非空时白名单外来源在明文连接上一律拒绝；TLS 连接不受限
+  max_conns: 512                   # 每个协议监听的最大并发连接
+  idle_timeout_min: 30             # 协议空闲超时（分钟）
+  skip_domain_verification: false  # 内网/测试可设 true，跳过域名 DNS TXT 验证

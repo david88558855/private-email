@@ -1,14 +1,18 @@
 package handlers
 
 import (
+	"context"
 	"log"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/david88558855/private-email/internal/config"
 	"github.com/david88558855/private-email/internal/outbound"
 	"github.com/david88558855/private-email/internal/server/middleware"
+	"github.com/david88558855/private-email/internal/store"
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/bcrypt"
@@ -84,22 +88,50 @@ func (h *MailHandler) UserPatch(c *gin.Context) {
 				}
 			}
 		}
-		h.Store.DB.Exec(`UPDATE users SET status=? WHERE id=?`, st, id)
+		if _, err := h.Store.DB.Exec(`UPDATE users SET status=? WHERE id=?`, st, id); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "保存失败"})
+			return
+		}
 	case "reset":
 		if len(req.Password) < 6 {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "密码至少 6 位"})
 			return
 		}
-		hash, _ := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
-		h.Store.DB.Exec(`UPDATE users SET password=? WHERE id=?`, string(hash), id)
-		// 同步该用户全部邮箱的客户端密码（D2 默认复用）
-		h.Store.DB.Exec(`UPDATE mailboxes SET password=? WHERE user_id=?`, string(hash), id)
+		hash, err := hashPassword(req.Password)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "密码不合法（最多 72 字节）"})
+			return
+		}
+		// users 与 mailboxes 必须同事务：否则改密成功而协议密码没同步，
+		// 用户的 IMAP/POP3/SMTP 客户端会被静默踢下线。
+		tx, err := h.Store.DB.Begin()
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "服务异常"})
+			return
+		}
+		if _, err := tx.Exec(`UPDATE users SET password=? WHERE id=?`, hash, id); err != nil {
+			tx.Rollback()
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "保存失败"})
+			return
+		}
+		if _, err := tx.Exec(`UPDATE mailboxes SET password=? WHERE user_id=?`, hash, id); err != nil {
+			tx.Rollback()
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "保存失败"})
+			return
+		}
+		if err := tx.Commit(); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "保存失败"})
+			return
+		}
 	default:
 		c.JSON(http.StatusBadRequest, gin.H{"error": "未知操作"})
 		return
 	}
-	h.Store.DB.Exec(`INSERT INTO audit_logs(user_id, action, detail) VALUES(?,?,?)`,
-		c.GetInt64("user_id"), "admin_"+req.Op, "user:"+c.Param("id"))
+	if _, err := h.Store.DB.Exec(`INSERT INTO audit_logs(user_id, action, detail) VALUES(?,?,?)`,
+		c.GetInt64("user_id"), "admin_"+req.Op, "user:"+c.Param("id")); err != nil {
+		// 主操作已成功，审计失败只记日志，不改响应。
+		log.Printf("审计日志写入失败: %v", err)
+	}
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 
@@ -124,9 +156,13 @@ func (h *MailHandler) UserAdd(c *gin.Context) {
 	if req.Role != "admin" {
 		req.Role = "user"
 	}
-	hash, _ := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
+	hash, err := hashPassword(req.Password)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "密码不合法（最多 72 字节）"})
+		return
+	}
 	res, err := h.Store.DB.Exec(`INSERT INTO users(username, password, role) VALUES(?,?,?)`,
-		req.Username, string(hash), req.Role)
+		req.Username, hash, req.Role)
 	if err != nil {
 		c.JSON(http.StatusConflict, gin.H{"error": "用户名已存在"})
 		return
@@ -135,7 +171,7 @@ func (h *MailHandler) UserAdd(c *gin.Context) {
 	// 自动建邮箱 username@第一个域名（无域名时只建账号）
 	var domainID int64
 	var domain string
-	h.Store.DB.QueryRow(`SELECT id, domain FROM domains ORDER BY id LIMIT 1`).Scan(&domainID, &domain)
+	h.Store.DB.QueryRow(`SELECT id, domain FROM domains WHERE status='verified' ORDER BY id LIMIT 1`).Scan(&domainID, &domain)
 	address := ""
 	if domainID > 0 {
 		address = req.Username + "@" + domain
@@ -158,7 +194,10 @@ func (h *MailHandler) Domains(c *gin.Context) {
 	if !adminOK(c) {
 		return
 	}
-	rows, err := h.Store.DB.Query(`SELECT d.id, d.domain, d.status, d.created_at,
+	// 每次列域名前补一次密钥：幂等，成本是一条 SELECT。旧库里 pending 期间
+	// 没生成过密钥的域名，在这里就能自动补上，不用重启进程。
+	outbound.EnsureDKIMKeys(h.Store)
+	rows, err := h.Store.DB.Query(`SELECT d.id, d.domain, d.status, d.created_at, COALESCE(d.verify_token,''),
 		COALESCE(k.selector,''), COALESCE(k.private_key,'') FROM domains d
 		LEFT JOIN dkim_keys k ON k.domain_id=d.id ORDER BY d.id`)
 	if err != nil {
@@ -169,9 +208,11 @@ func (h *MailHandler) Domains(c *gin.Context) {
 	items := []map[string]any{}
 	for rows.Next() {
 		var id int64
-		var domain, status, created, selector, key string
-		rows.Scan(&id, &domain, &status, &created, &selector, &key)
-		item := map[string]any{"id": id, "domain": domain, "status": status, "created_at": created}
+		var domain, status, created, token, selector, key string
+		rows.Scan(&id, &domain, &status, &created, &token, &selector, &key)
+		item := map[string]any{"id": id, "domain": domain, "status": status, "created_at": created,
+			"verify_token": token, "verify_host": "_private-email." + domain,
+			"verify_value": "pe-verify=" + token}
 		if key != "" {
 			pub := dnsTXTFor(key)
 			item["dkim_dns"] = map[string]any{
@@ -201,13 +242,99 @@ func (h *MailHandler) DomainAdd(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "域名格式错误（仅允许字母/数字/连字符，需带顶级域）"})
 		return
 	}
-	if _, err := h.Store.DB.Exec(`INSERT INTO domains(domain, status, dns_verified_at) VALUES(?,?,datetime('now'))`,
-		req.Domain, "verified"); err != nil {
+	token := config.RandToken(32)
+	status := "pending"
+	if h.Config.Security.SkipDomainVerification {
+		// 内网/测试部署可跳过 DNS 校验（配置项显式打开）
+		status = "verified"
+	}
+	var err error
+	if status == "verified" {
+		_, err = h.Store.DB.Exec(`INSERT INTO domains(domain, status, dns_verified_at, verify_token)
+			VALUES(?,?,datetime('now'),?)`, req.Domain, status, token)
+	} else {
+		_, err = h.Store.DB.Exec(`INSERT INTO domains(domain, status, verify_token) VALUES(?,?,?)`,
+			req.Domain, status, token)
+	}
+	if err != nil {
 		c.JSON(http.StatusConflict, gin.H{"error": "域名已存在"})
 		return
 	}
 	outbound.EnsureDKIMKeys(h.Store)
-	c.JSON(http.StatusOK, gin.H{"ok": true})
+	c.JSON(http.StatusOK, gin.H{"ok": true, "status": status,
+		"verify_host": "_private-email." + req.Domain, "verify_value": "pe-verify=" + token})
+}
+
+// DomainVerify POST /api/v1/admin/domains/:id/verify
+// 校验 DNS TXT 记录 _private-email.<domain> 是否等于 pe-verify=<token>。
+// 通过后才允许在该域名下建邮箱；原来「添加即 verified」让 status 字段形同虚设。
+func (h *MailHandler) DomainVerify(c *gin.Context) {
+	if !adminOK(c) {
+		return
+	}
+	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	// force：管理员显式跳过 DNS 校验。自托管/内网/域名没托管在公网 DNS 的
+	// 场景下，TXT 校验永远不可能通过，没有这条旁路就是功能死锁：域名卡在
+	// pending，邮箱建不了，DKIM 也不出记录。强制通过写审计日志留痕。
+	var req struct {
+		Force bool `json:"force"`
+	}
+	_ = c.ShouldBindJSON(&req)
+	var domain, token, status string
+	if err := h.Store.DB.QueryRow(`SELECT domain, COALESCE(verify_token,''), status FROM domains WHERE id=?`, id).
+		Scan(&domain, &token, &status); err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "域名不存在"})
+		return
+	}
+	if status == "verified" {
+		c.JSON(http.StatusOK, gin.H{"ok": true, "status": "verified"})
+		return
+	}
+	if req.Force {
+		if _, err := h.Store.DB.Exec(`UPDATE domains SET status='verified', dns_verified_at=datetime('now') WHERE id=?`, id); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "更新失败"})
+			return
+		}
+		outbound.EnsureDKIMKeys(h.Store)
+		h.Store.DB.Exec(`INSERT INTO audit_logs(user_id, action, detail) VALUES(?,?,?)`,
+			c.GetInt64("user_id"), "domain_verify_force", domain)
+		c.JSON(http.StatusOK, gin.H{"ok": true, "status": "verified", "forced": true})
+		return
+	}
+	if token == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "该域名缺少验证令牌，请删除后重新添加"})
+		return
+	}
+	want := "pe-verify=" + token
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+	records, err := net.DefaultResolver.LookupTXT(ctx, "_private-email."+domain)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "DNS 查询失败：" + err.Error(),
+			"verify_host": "_private-email." + domain, "verify_value": want})
+		return
+	}
+	ok := false
+	for _, r := range records {
+		if strings.TrimSpace(r) == want {
+			ok = true
+			break
+		}
+	}
+	if !ok {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "TXT 记录未匹配",
+			"verify_host": "_private-email." + domain, "verify_value": want,
+			"found": records})
+		return
+	}
+	if _, err := h.Store.DB.Exec(`UPDATE domains SET status='verified', dns_verified_at=datetime('now') WHERE id=?`, id); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "更新失败"})
+		return
+	}
+	outbound.EnsureDKIMKeys(h.Store)
+	h.Store.DB.Exec(`INSERT INTO audit_logs(user_id, action, detail) VALUES(?,?,?)`,
+		c.GetInt64("user_id"), "domain_verify", domain)
+	c.JSON(http.StatusOK, gin.H{"ok": true, "status": "verified"})
 }
 
 // Stats GET /api/v1/admin/stats —— 监控概览
@@ -231,7 +358,8 @@ func (h *MailHandler) Stats(c *gin.Context) {
 
 // Register POST /api/v1/auth/register {username, password} —— 受管理员注册开关控制（默认关闭）。
 func (h *MailHandler) Register(c *gin.Context) {
-	if h.Store.GetSetting("registration_enabled") != "true" {
+	// 读失败时按「未开放」处理，避免在设置异常时意外放开注册。
+	if reg, _ := h.Store.GetSetting("registration_enabled"); reg != "true" {
 		c.JSON(http.StatusForbidden, gin.H{"error": "注册未开放"})
 		return
 	}
@@ -247,8 +375,18 @@ func (h *MailHandler) Register(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "用户名仅限小写字母/数字/-/_，2-32 位"})
 		return
 	}
-	hash, _ := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
-	res, err := h.Store.DB.Exec(`INSERT INTO users(username, password) VALUES(?,?)`, req.Username, string(hash))
+	// 注册会自动建成 <username>@<域名>，所以保留字必须在建账号前挡住，
+	// 否则自助注册就是绕过 MailboxCreate 保留字检查的后门。
+	if reservedAddresses[strings.ToLower(req.Username)] {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "该用户名为系统保留"})
+		return
+	}
+	hash, err := hashPassword(req.Password)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "密码不合法（最多 72 字节）"})
+		return
+	}
+	res, err := h.Store.DB.Exec(`INSERT INTO users(username, password) VALUES(?,?)`, req.Username, hash)
 	if err != nil {
 		c.JSON(http.StatusConflict, gin.H{"error": "用户名已存在"})
 		return
@@ -256,7 +394,7 @@ func (h *MailHandler) Register(c *gin.Context) {
 	uid, _ := res.LastInsertId()
 	var domainID int64
 	var domain string
-	h.Store.DB.QueryRow(`SELECT id, domain FROM domains ORDER BY id LIMIT 1`).Scan(&domainID, &domain)
+	h.Store.DB.QueryRow(`SELECT id, domain FROM domains WHERE status='verified' ORDER BY id LIMIT 1`).Scan(&domainID, &domain)
 	if domainID > 0 {
 		if res, err := h.Store.DB.Exec(`INSERT INTO mailboxes(user_id, address, domain_id, password) VALUES(?,?,?,?)`,
 			uid, req.Username+"@"+domain, domainID, string(hash)); err == nil {
@@ -294,10 +432,25 @@ func (h *MailHandler) AppPasswords(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
 			return
 		}
-		pwd := randCode(20)
-		hash, _ := bcrypt.GenerateFromPassword([]byte(pwd), bcrypt.DefaultCost)
-		h.Store.DB.Exec(`INSERT INTO app_passwords(mailbox_id, label, password_hash) VALUES(?,?,?)`,
-			mbID, req.Label, string(hash))
+		if h.Store.AppPasswordCount(mbID) >= store.MaxAppPasswords {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "App 专用密码最多 5 个，请先撤销不用的"})
+			return
+		}
+		pwd, err := randCode(20)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "生成失败"})
+			return
+		}
+		hash, err := bcrypt.GenerateFromPassword([]byte(pwd), bcrypt.DefaultCost)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "生成失败"})
+			return
+		}
+		if _, err := h.Store.DB.Exec(`INSERT INTO app_passwords(mailbox_id, label, password_hash) VALUES(?,?,?)`,
+			mbID, req.Label, string(hash)); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "保存失败"})
+			return
+		}
 		c.JSON(http.StatusOK, gin.H{"password": pwd})
 	case http.MethodDelete:
 		id, _ := strconv.ParseInt(c.Query("pid"), 10, 64)

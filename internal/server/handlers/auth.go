@@ -100,9 +100,9 @@ func (h *AuthHandler) ChangePassword(c *gin.Context) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "旧密码错误"})
 		return
 	}
-	newHash, err := bcrypt.GenerateFromPassword([]byte(req.New), bcrypt.DefaultCost)
+	newHash, err := hashPassword(req.New)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "服务异常"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "密码不合法（最多 72 字节）"})
 		return
 	}
 	tx, err := h.DB.Begin()

@@ -2,9 +2,11 @@ package handlers
 
 import (
 	"database/sql"
-	"github.com/david88558855/private-email/internal/config"
+	"fmt"
 	"net/http"
 	"strconv"
+
+	"github.com/david88558855/private-email/internal/config"
 
 	"github.com/david88558855/private-email/internal/mailutil"
 	"github.com/david88558855/private-email/internal/store"
@@ -106,6 +108,8 @@ func (h *MailHandler) Raw(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "邮件不存在"})
 		return
 	}
+	// 带 Content-Disposition，浏览器才会按文件下载而不是尝试内联渲染
+	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=\"mail-%d.eml\"", id))
 	c.Data(http.StatusOK, "message/rfc822", m.Raw)
 }
 
@@ -124,7 +128,10 @@ func (h *MailHandler) Patch(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
 		return
 	}
-	h.Store.MarkSeen(id)
+	if err := h.Store.MarkSeen(id); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "服务异常"})
+		return
+	}
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 

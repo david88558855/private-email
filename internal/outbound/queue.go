@@ -2,16 +2,19 @@
 package outbound
 
 import (
+	"bytes"
 	"crypto"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/tls"
 	"crypto/x509"
+	"database/sql"
 	"encoding/pem"
 	"fmt"
 	"log"
 	"net"
 	"net/smtp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -27,7 +30,7 @@ type Worker struct {
 	Cfg   *config.Config
 }
 
-// Start 启动投递循环。
+// Start 启动投递循环 + 队列清理。
 func (w *Worker) Start() {
 	go func() {
 		for {
@@ -35,6 +38,33 @@ func (w *Worker) Start() {
 			time.Sleep(20 * time.Second)
 		}
 	}()
+	go func() {
+		// 每天清一次已完成的队列行：status='sent' 的行原来永久保留，
+		// 还带着整封 raw_blob，库只会越涨越大。
+		for {
+			w.cleanup()
+			time.Sleep(24 * time.Hour)
+		}
+	}()
+}
+
+// cleanup 删除超过保留期的已送达/已失败队列行。
+func (w *Worker) cleanup() {
+	days := 7
+	if v, err := w.Store.GetSetting("queue_retention_days"); err == nil && v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n >= 1 && n <= 365 {
+			days = n
+		}
+	}
+	res, err := w.Store.DB.Exec(`DELETE FROM mail_queue
+		WHERE status IN ('sent','failed') AND created_at < datetime('now', ?)`,
+		fmt.Sprintf("-%d days", days))
+	if err != nil {
+		return
+	}
+	if n, _ := res.RowsAffected(); n > 0 {
+		log.Printf("已清理 %d 条历史投递队列记录（保留 %d 天）", n, days)
+	}
 }
 
 func (w *Worker) drain() {
@@ -119,6 +149,11 @@ func (w *Worker) viaMX(from, to string, raw []byte) error {
 // 系统 TCP 超时（数分钟），期间整个出站循环都被卡住。
 const deliveryTimeout = 60 * time.Second
 
+// sendDirect 直连收件域的 MX（无 MX 时按 RFC 5321 回落 A 记录）。
+//
+// 有意不过滤私网/回环地址：本产品定位是自建与局域网邮箱，内网 MX 互联投递
+// （mail.lan、192.168.x.x 等）是合法且常见用法，默认禁止会直接打断内网邮件。
+// 公网部署请配 smarthost 并用防火墙限制出站 25，避免被当作内网探测跳板。
 func (w *Worker) sendDirect(from string, tos []string, raw []byte) error {
 	domain := tos[0][strings.Index(tos[0], "@")+1:]
 	mxs, err := net.LookupMX(domain)
@@ -187,26 +222,37 @@ func (w *Worker) dkimSign(from string, raw []byte) []byte {
 	var pem, selector string
 	if err := w.Store.DB.QueryRow(`SELECT k.private_key, k.selector FROM dkim_keys k
 		JOIN domains d ON d.id=k.domain_id WHERE d.domain=? LIMIT 1`, domain).Scan(&pem, &selector); err != nil {
+		// 域名还没生成密钥属正常状态；其它查询故障必须留痕，否则签名静默降级无人知晓。
+		if err != sql.ErrNoRows {
+			log.Printf("DKIM 查私钥失败 domain=%s: %v", domain, err)
+		}
 		return raw
 	}
 	priv, err := parseDKIMKey([]byte(pem))
 	if err != nil {
+		log.Printf("DKIM 私钥解析失败 domain=%s: %v", domain, err)
 		return raw
 	}
 	if selector == "" {
 		selector = "default"
 	}
 	opts := dkim.SignOptions{Domain: domain, Selector: selector, Signer: priv}
-	var buf strings.Builder
-	if err := dkim.Sign(&buf, strings.NewReader(string(raw)), &opts); err != nil {
+	var buf bytes.Buffer
+	if err := dkim.Sign(&buf, bytes.NewReader(raw), &opts); err != nil {
+		log.Printf("DKIM 签名失败 domain=%s，本封邮件将以未签名方式投递: %v", domain, err)
 		return raw
 	}
-	return []byte(buf.String())
+	return buf.Bytes()
 }
 
-// EnsureDKIMKeys 为已验证域名生成 RSA2048 密钥（幂等）。
+// EnsureDKIMKeys 为所有域名生成 RSA2048 密钥（幂等）。
+//
+// 不再限定 status='verified'：DKIM 密钥跟 DNS 验证是两件独立的事，而管理员
+// 配 DNS 时需要一次把 TXT 验证记录和 DKIM 记录都填好。原来只给已验证域名
+// 生成，导致「域名待验证 → 没有 dkim_dns → 界面永远显示生成中」，用户既不
+// 知道该填什么，也没法先把 DNS 配完再验证。
 func EnsureDKIMKeys(st *store.Store) {
-	rows, err := st.DB.Query(`SELECT id, domain FROM domains WHERE status='verified' AND NOT EXISTS
+	rows, err := st.DB.Query(`SELECT id, domain FROM domains WHERE NOT EXISTS
 		(SELECT 1 FROM dkim_keys k WHERE k.domain_id=domains.id)`)
 	if err != nil {
 		return
@@ -259,8 +305,12 @@ func (w *Worker) viaSmarthost(from string, tos []string, raw []byte) error {
 	addr := w.Cfg.SMTPClient.Smarthost
 	host, _, _ := net.SplitHostPort(addr)
 	implicit := strings.HasSuffix(addr, ":465")
-	conn, err := net.Dial("tcp", addr)
+	conn, err := net.DialTimeout("tcp", addr, deliveryTimeout)
 	if err != nil {
+		return err
+	}
+	if err := conn.SetDeadline(time.Now().Add(deliveryTimeout)); err != nil {
+		conn.Close()
 		return err
 	}
 	tlsCfg := &tls.Config{ServerName: host, InsecureSkipVerify: w.Cfg.SMTPClient.InsecureSkipVerify}

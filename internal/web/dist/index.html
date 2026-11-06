@@ -64,7 +64,7 @@
         <a href="javascript:void 0" id="lgForgot" onclick="toast('请联系管理员重置密码')">忘记密码？</a>
       </div>
       <button class="btn text" id="lgBack" style="display:none" onclick="setMode('user')">← 返回登录</button>
-      <div class="login-tip">默认管理员 <b>admin / admin</b>（首次登录请立即修改）</div>
+      <div class="login-tip">首次启动的初始管理员密码见数据目录 <b>initial_admin.txt</b>，登录后请立即修改</div>
     </div>
   </div>
 </div>
@@ -166,6 +166,7 @@
           <div class="panel" style="margin-bottom:16px">
             <h4 style="margin-bottom:14px"><svg style="color:var(--primary)"><use href="#i-key"/></svg>自定义验证码提取规则</h4>
             <div class="row">
+              <div class="field" style="flex:1;min-width:200px"><label>选择邮箱</label><select id="vfMbx"></select></div>
               <div class="field" style="min-width:180px"><label>规则名称</label><input id="vfName" placeholder="GitHub 登录码"></div>
               <div class="field" style="flex:1;min-width:280px"><label>正则表达式（含捕获组）</label><input id="vfPattern" placeholder="(?:code is)[:\s]+([0-9]{6})"></div>
               <button class="btn filled" onclick="addRule('verif')">添加规则</button>
@@ -234,7 +235,7 @@
               <div class="field" style="flex:1;min-width:240px"><label>域名</label><input id="ndName" placeholder="example.com"></div>
               <button class="btn filled" onclick="addDomain()">添加域名</button>
             </div>
-            <p class="hint" style="margin-top:10px">添加后自动生成 DKIM 密钥，请到 DNS 发布对应 TXT 记录。</p>
+            <p class="hint" style="margin-top:10px">添加后需在 DNS 发布验证用 TXT 记录（<code>_private-email.域名</code>），点「验证」通过后才能建邮箱；内网部署可在配置里打开 <code>skip_domain_verification</code>。DKIM 密钥会自动生成。</p>
           </div>
           <div class="panel"><h4>域名列表</h4><table class="tbl" id="aDomainsTbl"></table></div>
         </div>
@@ -295,7 +296,7 @@
       <p class="hint">仅此一次展示，请立即复制到客户端：</p>
       <div class="apw-box" id="apwValue"></div>
     </div>
-    <div class="ft"><button class="btn filled" onclick="closeDlg('apwDlg');toast('已复制')">复制并关闭</button></div>
+    <div class="ft"><button class="btn filled" onclick="copyApw()">复制并关闭</button></div>
   </div>
 </div>
 

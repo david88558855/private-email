@@ -6,6 +6,7 @@
 package authlimit
 
 import (
+	"strings"
 	"sync"
 	"time"
 )
@@ -17,6 +18,11 @@ const (
 	Window = 5 * time.Minute
 	// maxEntries 防止 map 随攻击者伪造来源无限增长
 	maxEntries = 20000
+	// 账号维度阈值更宽：按 IP 10 次/5 分钟已经挡住了单机爆破，
+	// 账号维度只用于拦截分布式撞库；阈值太低会让攻击者用 10 个错误密码
+	// 就把受害者账号锁死（DoS）。
+	MaxFailsAccount = 100
+	WindowAccount   = 15 * time.Minute
 )
 
 type bucket struct {
@@ -25,38 +31,65 @@ type bucket struct {
 }
 
 var (
-	mu   sync.Mutex
-	seen = map[string]*bucket{}
+	mu        sync.Mutex
+	seen      = map[string]*bucket{}
+	lastSweep time.Time
 )
+
+// reserveSlotLocked 防止 seen 被伪造来源（acct:<任意用户名>）无限撑大。
+// 达到上限时先清过期项（全表扫描最多每分钟一次），仍满则拒绝新条目（fail-closed）。
+func reserveSlotLocked(now time.Time) bool {
+	if len(seen) < maxEntries {
+		return true
+	}
+	if now.Sub(lastSweep) > time.Minute {
+		sweepLocked(now)
+		lastSweep = now
+	}
+	return len(seen) < maxEntries
+}
+
+// limits 按 key 前缀选择阈值。
+func limits(key string) (int, time.Duration) {
+	if strings.HasPrefix(key, "acct:") {
+		return MaxFailsAccount, WindowAccount
+	}
+	return MaxFails, Window
+}
 
 // Allow 判断该来源是否还能继续尝试认证（在验证密码之前调用）。
 func Allow(key string) bool {
 	mu.Lock()
 	defer mu.Unlock()
+	max, window := limits(key)
 	b, ok := seen[key]
 	now := time.Now()
 	if !ok || now.After(b.reset) {
-		seen[key] = &bucket{fails: 0, reset: now.Add(Window)}
+		if !reserveSlotLocked(now) {
+			return false
+		}
+		seen[key] = &bucket{fails: 0, reset: now.Add(window)}
 		return true
 	}
-	return b.fails < MaxFails
+	return b.fails < max
 }
 
 // Fail 记一次失败并返回剩余可用次数（<=0 表示已封禁）。
 func Fail(key string) int {
 	mu.Lock()
 	defer mu.Unlock()
+	max, window := limits(key)
 	b, ok := seen[key]
 	now := time.Now()
 	if !ok || now.After(b.reset) {
-		b = &bucket{reset: now.Add(Window)}
+		if !reserveSlotLocked(now) {
+			return 0
+		}
+		b = &bucket{reset: now.Add(window)}
 		seen[key] = b
 	}
 	b.fails++
-	if len(seen) > maxEntries {
-		sweepLocked(now)
-	}
-	return MaxFails - b.fails
+	return max - b.fails
 }
 
 // Reset 认证成功后清零该来源的失败计数。

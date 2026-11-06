@@ -41,10 +41,27 @@ def smtp_send(frm, to, subject, text, html=None):
 
 ctx = ssl.create_default_context(); ctx.check_hostname = False; ctx.verify_mode = ssl.CERT_NONE
 
+def wait_ready(timeout=15):
+    """等 HTTP 起来再跑，避免开头几条断言因连接失败被误记为功能失败。"""
+    end = time.time() + timeout
+    while time.time() < end:
+        st, _ = http('/settings')
+        if st != 0:
+            return
+        time.sleep(0.2)
+    print('服务未就绪:', BASE)
+    sys.exit(1)
+
+wait_ready()
 print('=== 1. 认证 ===')
 pw = os.environ.get('PE_PW', 'admin')  # 默认管理员密码
 st, r = http('/auth/login', {'username': 'admin', 'password': 'wrong'}); ok('错误密码拒绝', st == 401)
-st, r = http('/auth/login', {'username': 'admin', 'password': pw}); ok('登录', st == 200 and r.get('token')); T = r['token']
+st, r = http('/auth/login', {'username': 'admin', 'password': pw}); ok('登录', st == 200 and r.get('token'))
+if st != 200:
+    print('登录失败：服务若用随机初始密码启动，请设置 PE_PW=data/initial_admin.txt 里的值，')
+    print('或在启动服务前设置 PRIVATE_EMAIL_ADMIN_PASSWORD 指定固定初始密码。')
+    sys.exit(1)
+T = r['token']
 st, r = http('/auth/login', {'username': 'admin', 'password': pw}); T2 = r.get('token', '')
 st, r = http('/me', token=T); ok('会话 /me', st == 200 and r.get('role') == 'admin')
 st, _ = http('/me'); ok('无 token 401', st == 401)
@@ -56,7 +73,8 @@ _st, _dl = http('/admin/domains', token=T)
 _dom = None
 for _d in (_dl.get('items') or []):
     _st2, _mb = http(f"/mailboxes", token=T)
-    if not any(m['address'].split('@')[0] == 'admin' and m['address'].endswith('@' + _d['domain']) for m in _mb['items']):
+    # admin 是系统保留地址，不能用它建测试邮箱（会被 400 拒绝）
+    if not any(m['address'].split('@')[0] == 'qa' + TAG and m['address'].endswith('@' + _d['domain']) for m in _mb['items']):
         _dom = _d
         break
 if not _dom:
@@ -64,7 +82,7 @@ if not _dom:
     http('/admin/domains', {'domain': MBDOMAIN}, token=T, method='POST')
     _st, _dl = http('/admin/domains', token=T)
     _dom = [d for d in _dl['items'] if d['domain'] == MBDOMAIN][0]
-_st, _r = http('/mailboxes', {'prefix': 'admin', 'domain_id': _dom['id']}, token=T, method='POST')
+_st, _r = http('/mailboxes', {'prefix': 'qa' + TAG, 'domain_id': _dom['id']}, token=T, method='POST')
 if _st == 200 and _r.get('address'):
     MBOX = _r['address']
 else:
@@ -169,7 +187,7 @@ st, r = http('/domains', token=T); ok('域名列表(普通用户)', st == 200 an
 st, r = http('/mailboxes', {'prefix': 'qa-extra' + TAG, 'domain_id': dom_id}, token=T, method='POST')
 ok('创建邮箱', st == 200 and ('qa-extra' + TAG) in r.get('address', ''))
 st, r = http('/mailboxes', {'prefix': 'BAD NAME!', 'domain_id': dom_id}, token=T, method='POST'); ok('非法前缀拒绝', st == 400)
-st, r = http('/mailboxes', {'prefix': 'admin', 'domain_id': dom_id}, token=T, method='POST'); ok('占用地址拒绝', st == 409)
+st, r = http('/mailboxes', {'prefix': 'qa-extra' + TAG, 'domain_id': dom_id}, token=T, method='POST'); ok('占用地址拒绝', st == 409)
 mbs2 = http('/mailboxes', token=T)[1]['items']
 newmb = [m for m in mbs2 if (TAG) in m['address'] and 'qa-extra' in m['address']]
 st, r = http(f"/mailboxes/{newmb[0]['id']}", {'active': False}, token=T, method='PATCH'); ok('停用邮箱', st == 200)

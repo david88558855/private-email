@@ -22,6 +22,15 @@ func LoginRateLimit(max int) gin.HandlerFunc {
 		mu.Lock()
 		b, ok := seen[ip]
 		now := time.Now()
+		// 每 IP 一条、只增不删，分布式扫描时 map 会无限膨胀；
+		// 超过阈值就顺手清一遍过期条目。
+		if len(seen) > 10000 {
+			for k, v := range seen {
+				if now.After(v.reset) {
+					delete(seen, k)
+				}
+			}
+		}
 		if !ok || now.After(b.reset) {
 			seen[ip] = &bucket{1, now.Add(time.Minute)}
 			mu.Unlock()

@@ -4,7 +4,9 @@ package server
 import (
 	"database/sql"
 	"io/fs"
+	"log"
 	"net/http"
+	"strings"
 
 	"github.com/david88558855/private-email/internal/config"
 	"github.com/david88558855/private-email/internal/server/handlers"
@@ -52,6 +54,7 @@ func New(db *sql.DB, cfg *config.Config, st *store.Store) *gin.Engine {
 	authed.GET("/admin/domains", mail.Domains)
 	authed.POST("/admin/domains", mail.DomainAdd)
 	authed.DELETE("/admin/domains/:id", mail.DomainDelete)
+	authed.POST("/admin/domains/:id/verify", mail.DomainVerify)
 	authed.GET("/admin/settings", mail.Settings)
 	authed.PUT("/admin/settings", mail.SettingsPut)
 	authed.GET("/domains", mail.DomainsList)
@@ -70,14 +73,20 @@ func New(db *sql.DB, cfg *config.Config, st *store.Store) *gin.Engine {
 	api.POST("/auth/register", middleware.LoginRateLimit(cfg.Security.LoginRate), mail.Register)
 	api.GET("/settings", mail.PublicSettings)
 
-	// 内嵌前端：SPA 回退到 index.html
-	dist, _ := fs.Sub(web.Dist, "dist")
+	// 内嵌前端静态资源；dist 取不到时必须在启动期就暴露，否则全站 404 无线索。
+	dist, err := fs.Sub(web.Dist, "dist")
+	if err != nil {
+		log.Fatalf("内嵌前端资源不可用: %v", err)
+	}
 	r.NoRoute(func(c *gin.Context) {
-		if len(c.Request.URL.Path) > 4 && c.Request.URL.Path[:4] == "/api" {
+		p := c.Request.URL.Path
+		// 精确匹配 /api 与 /api/ 前缀：原来的前缀判断会把 /apixxx 误判成 API，
+		// 而 /api 本身反而落到静态分支。
+		if p == "/api" || strings.HasPrefix(p, "/api/") {
 			c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
 			return
 		}
-		c.FileFromFS(c.Request.URL.Path, http.FS(dist))
+		c.FileFromFS(p, http.FS(dist))
 	})
 	return r
 }

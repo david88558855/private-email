@@ -14,13 +14,24 @@ func DrainBody(c *gin.Context) {
 	}
 }
 
-// SecurityHeaders 基础安全响应头：防 MIME 嗅探、防被第三方页面套框、不外泄 Referer。
+// SecurityHeaders 基础安全响应头。
+// CSP 是最后一道 XSS 兜底：前端用了内联 onclick，所以 script-src 必须
+// 保留 'unsafe-inline'；其余指令一律收紧到同源。
 func SecurityHeaders() gin.HandlerFunc {
+	const csp = "default-src 'self'; " +
+		"script-src 'self' 'unsafe-inline'; " +
+		"style-src 'self' 'unsafe-inline'; " +
+		"img-src 'self' data: blob:; " +
+		"font-src 'self' data:; " +
+		"connect-src 'self'; " +
+		"frame-src 'self' data: blob:; " +
+		"object-src 'none'; base-uri 'none'; form-action 'self'"
 	return func(c *gin.Context) {
 		h := c.Writer.Header()
 		h.Set("X-Content-Type-Options", "nosniff")
 		h.Set("X-Frame-Options", "DENY")
 		h.Set("Referrer-Policy", "no-referrer")
+		h.Set("Content-Security-Policy", csp)
 		c.Next()
 	}
 }

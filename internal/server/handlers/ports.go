@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/david88558855/private-email/internal/config"
 	"github.com/gin-gonic/gin"
 )
 
@@ -22,7 +23,12 @@ func (h *MailHandler) Ports(c *gin.Context) {
 	}
 	out := map[string]string{}
 	for _, k := range listenerKeys {
-		out[k] = h.Store.GetSetting(k)
+		v, err := h.Store.GetSetting(k)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "读取设置失败"})
+			return
+		}
+		out[k] = v
 	}
 	c.JSON(http.StatusOK, gin.H{"items": out})
 }
@@ -37,6 +43,7 @@ func (h *MailHandler) PortsPut(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
 		return
 	}
+	normalized := map[string]string{}
 	for k, v := range req {
 		valid := false
 		for _, kk := range listenerKeys {
@@ -58,7 +65,33 @@ func (h *MailHandler) PortsPut(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "端口格式错误：" + v + "（应为 25 或 0.0.0.0:25）"})
 			return
 		}
-		h.Store.SetSetting(k, v)
+		normalized[k] = v
+	}
+	// 合并「本次修改 + 未提交的现值」后再查重：只提交一个键时也要能发现冲突。
+	// HTTP 端口不在这里，由启动期 ValidateListenPorts 连同 7 个协议一起校验。
+	final := map[string]string{}
+	for _, k := range listenerKeys {
+		if v, ok := normalized[k]; ok {
+			final[k] = v
+			continue
+		}
+		v, err := h.Store.GetSetting(k)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "读取设置失败"})
+			return
+		}
+		final[k] = v
+	}
+	if err := config.ValidateListenPorts(final); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	// 校验全部通过才写库，避免中途失败留下半套端口配置。
+	for k, v := range normalized {
+		if err := h.Store.SetSetting(k, v); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "保存失败"})
+			return
+		}
 	}
 	h.Store.DB.Exec(`INSERT INTO audit_logs(user_id, action, detail) VALUES(?,?,?)`,
 		c.GetInt64("user_id"), "settings_ports", "update")
