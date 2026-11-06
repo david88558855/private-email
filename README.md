@@ -30,7 +30,8 @@ Go 1.27 · Gin · modernc.org/sqlite（纯 Go，无 CGO）· go:embed 内嵌 Web
 - IMAP4rev1（143 STARTTLS / 993 SSL）：`LOGIN` / `AUTHENTICATE PLAIN`，LIST / SELECT / STATUS / FETCH / SEARCH / STORE / COPY / APPEND / EXPUNGE
 - POP3（110 / 995 SSL）：`USER/PASS` / `AUTH PLAIN`（RFC 5034）、STAT / LIST / UIDL / RETR / TOP / DELE / RSET / QUIT
 - SMTP 提交（587）：`AUTH PLAIN` / `AUTH LOGIN`
-- 三协议统一接受 Web 主密码或「App 专用密码」（独立令牌，可单独撤销、带 `last_used` 审计）
+- 三协议统一接受 Web 主密码或「App 专用密码」（独立令牌，**与邮箱一对一**：只能在生成它的那个地址上登录，
+  数量不设上限，可单独撤销、带 `last_used` 审计，Web 端可**随时回显查看**；界面上「归属邮箱」可切换）
 
 **Web 客户端**
 
@@ -68,13 +69,14 @@ Go 1.27 · Gin · modernc.org/sqlite（纯 Go，无 CGO）· go:embed 内嵌 Web
 2. 建库并执行迁移（含 FTS5 全文索引与同步触发器）
 3. 生成 `data/config.yaml`（默认值）
 4. 生成自签 TLS 证书 `data/certs/server.crt`（10 年有效）
-5. 创建管理员 `admin`，**随机初始密码**写入 `data/initial_admin.txt`（权限 0600）并在启动日志打印一次
+5. 创建管理员 `admin`，**初始密码固定为 `admin`**（不再随机生成、也不写密码文件）
 
-Web 控制台：<http://localhost:9000>
+Web 控制台：<http://localhost:9000>，用 `admin` / `admin` 登录。
 
-> 自动化部署可设环境变量 `PRIVATE_EMAIL_ADMIN_PASSWORD` 指定初始密码：此时**不生成**
-> `initial_admin.txt`、日志也不回显密码，秘密只留在环境变量里。
-> **首登立即改密**；改密会同步该用户所有邮箱的协议密码。
+> 默认口令是公开信息，**首登必须立即改密**（账号设置 → 修改密码）；改密会同步该用户
+> 所有邮箱的 IMAP/SMTP/POP3 协议密码。
+> 自动化部署可用环境变量 `PRIVATE_EMAIL_ADMIN_PASSWORD` 覆盖初始密码，避免公开发布的默认值。
+> 日志里会打印一条「默认口令」警告，直到你改密为止。
 
 > 首次启动**不会**自动创建域名或邮箱。登录后到「后台管理 → 域名」添加域名，再回「邮箱管理」建邮箱。
 
@@ -158,15 +160,15 @@ security:
 ```
 data/
 ├── db.sqlite      # 全部数据：用户、域名、邮箱、邮件原文 BLOB、队列、设置
-├── initial_admin.txt  # 首次启动生成的随机管理员初始密码（0600，改密后建议删除）
 ├── config.yaml    # 配置
 ├── certs/         # TLS 证书（自签或自有）
 ├── backup/        # 预留目录（当前代码未写入）
-├── keys/          # 预留目录
+├── keys/          # App 专用密码密文密钥 app.key（0600，务必与 db.sqlite 一起备份）
 └── logs/          # 预留目录（日志当前输出到 stdout）
 ```
 
-备份方式：**停服务后拷贝 `db.sqlite`**（连同 `-wal`/`-shm` 一并拷，或先执行一次 checkpoint）。
+备份方式：**停服务后拷贝 `db.sqlite`**（连同 `-wal`/`-shm` 一并拷，或先执行一次 checkpoint），
+并把 `keys/app.key` 一起带走，否则恢复后 App 专用密码无法回显。
 运行中直接用 `sqlite3 db.sqlite ".backup out.sqlite"` 也可得到一致快照。
 
 ---
@@ -209,22 +211,22 @@ make build VERSION=v2.2.0
 # data/config.yaml 里把上面这些端口配好，启动服务后：
 python3 tools/e2e_suite.py
 # 可用环境变量覆盖：PE_BASE（默认 http://localhost:9000/api/v1）、PE_PW（默认 admin）
-# 若服务用随机初始密码启动，请把 PE_PW 设为 data/initial_admin.txt 里的值；
-# 或在启动服务前设 PRIVATE_EMAIL_ADMIN_PASSWORD 指定固定初始密码。
+# 管理员默认口令就是 admin；若启动前设了 PRIVATE_EMAIL_ADMIN_PASSWORD，PE_PW 要跟着改。
 ```
 
 其中「出站回环送达」依赖测试域名能被 DNS 解析（`.test` 域名默认不可解析），
 在无本地 DNS 兜底的环境会失败并连带影响紧随其后的 POP3 STAT 计数，其余用例应全绿。
 
-`tools/auth_plain_suite.py` 是独立令牌 / `AUTH=PLAIN` 专项套件（57 条），**自带构建与临时实例**，
+`tools/auth_plain_suite.py` 是独立令牌 / `AUTH=PLAIN` 专项套件（63 条），**自带构建与临时实例**，
 不需要预先配置端口或已有数据：`python3 tools/auth_plain_suite.py`。详见「AUTH=PLAIN 与明文认证」。
 
 ---
 
 ## 安全说明
 
-- **初始管理员密码为首次启动随机生成**，只存 `data/initial_admin.txt`（0600）；首登立即改密，
-  改密后建议删除该文件。改密会同步该用户所有邮箱的协议密码。
+- **管理员初始密码固定为 `admin`**（不随机、不落盘成文件）：方便直接登录，但默认口令是公开信息，
+  首次登录后必须立即改密；对外网暴露前建议改用环境变量 `PRIVATE_EMAIL_ADMIN_PASSWORD` 指定初始密码。
+  改密会同步该用户所有邮箱的协议密码。
 - **账号禁用立即生效**：JWT 每次请求都回查用户状态，禁用后旧 token 立刻失效（不必等 24h 过期）。
 - **登录限速按真实来源 IP**：服务不信任 `X-Forwarded-For`。若部署在 Nginx/Cloudflare 之后，
   所有请求会呈现为反代 IP，限速粒度随之变粗——这需要在反代层做限速。
@@ -233,6 +235,11 @@ python3 tools/e2e_suite.py
   STARTTLS/SSL 端口。
 - 邮件 HTML 正文在 `sandbox` iframe 内渲染，脚本、表单、同源访问全部禁用；
   iframe 文档自带 CSP（`default-src 'none'`），远程图片/样式外链默认不加载。
+- **App 专用密码可回显，因此是「密文落库」而不是单向哈希**：明文用 AES-256-GCM 加密后存
+  `app_passwords.secret`，密钥在 `data/keys/app.key`（0600，首次启动生成）。
+  单独泄露 `db.sqlite` 拿不到令牌；**备份必须把 `db.sqlite` 与 `keys/app.key` 一起带走**，
+  只恢复数据库会导致历史令牌无法回显（仍能登录，因为同时保留了 bcrypt 哈希）。
+  密钥文件损坏时程序拒绝启动，不会静默重建。
 - DKIM 私钥与邮件原文同库存储，`db.sqlite` 泄露等同于邮箱与发信身份泄露，注意文件权限。
 
 ---
@@ -270,7 +277,8 @@ PLAIN 载荷是 `[authzid]\0用户名\0密码` 的 base64（RFC 4616）；服务
 3. **配置来源白名单**：`insecure_auth_cidrs` 明确列出客户端网段，如 `["192.168.10.0/24"]`。
    配好后即使监听写成通配，白名单外来源在明文连接上也一律拒绝；TLS 连接不受限制。
    CIDR 写错会**拒绝启动**，不会静默忽略（否则白名单形同虚设）。
-4. **客户端一律用独立令牌**：Web 端「邮箱 → App 专用密码」每台客户端生成一个，
+4. **客户端一律用独立令牌**：Web 端「账号设置 → App 专用密码」每台客户端生成一个（先在「归属邮箱」选好地址，
+   客户端用户名必须填同一个地址，令牌与邮箱严格一对一），
    **绝不把 Web 主密码填进明文客户端**。令牌泄露可单独撤销、不改主密码；`last_used` 有审计记录。
 5. **注意 L4 代理**：来源判定用 TCP `RemoteAddr`。前面有 L4 代理时服务端看到的是代理 IP，
    必须把代理 IP 加进白名单并在代理层限制来源（HTTP 反代不影响协议端口）。
@@ -309,7 +317,7 @@ python3 tools/auth_plain_suite.py
 ```
 
 套件自动构建二进制、在临时目录用高位端口起隔离实例，依次切换 4 组策略并核对三协议明文/TLS 登录、
-能力发布、令牌撤销与 `last_used` 审计、白名单放行/拒绝、非法 CIDR 拒绝启动（共 57 条断言）。
+能力发布、令牌撤销与 `last_used` 审计、白名单放行/拒绝、非法 CIDR 拒绝启动（共 63 条断言）。
 它使用真实 `imaplib` / `poplib` / `smtplib` 客户端，并用原生 socket 校验 SASL 交互细节。
 
 ---
@@ -350,6 +358,7 @@ internal/proto/imap/   IMAP4rev1 服务端
 internal/proto/pop3/   POP3 服务端（含 RFC 5034 AUTH PLAIN）
 internal/outbound/     出站队列、DKIM 签名、MX 投递
 internal/tlsutil/      自签证书
+internal/secrets/      App 专用密码密文（AES-256-GCM，密钥 data/keys/app.key）
 internal/server/       路由、中间件、API handler
 internal/web/dist/     前端静态资源（go:embed 内嵌）
 tools/e2e_suite.py     端到端测试套件

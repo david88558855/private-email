@@ -68,7 +68,7 @@ svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.7;stroke
 .snip{display:inline-flex;height:24px;align-items:center;padding:0 9px;border-radius:7px;background:var(--pc);color:var(--on-pc);font-family:ui-monospace,monospace;font-size:12px;font-weight:700;letter-spacing:.5px}
 
 /* ============ 登录 ============ */
-#login{position:fixed;inset:0;display:flex;z-index:50;background:linear-gradient(135deg,#1565C0 0%,#2196F3 55%,#64B5F6 100%)}
+#login{position:fixed;inset:0;display:none;z-index:50;background:linear-gradient(135deg,#1565C0 0%,#2196F3 55%,#64B5F6 100%)}
 [data-theme=dark] #login{background:linear-gradient(135deg,#0D2137 0%,#12395E 55%,#17527F 100%)}
 .login-left{flex:1.15;display:flex;flex-direction:column;justify-content:center;padding:0 7%;color:#fff;gap:18px}
 .login-left .mark{display:flex;align-items:center;gap:16px}
@@ -94,6 +94,10 @@ svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.7;stroke
 /* ============ 应用外壳 ============ */
 #app{display:none;height:100vh}
 #app.on{display:flex}
+/* 已登录时首帧就显示外壳：data-auth 由 <head> 内联脚本设置，
+   不必等 app.js 下载执行，否则刷新会先闪一帧空白页再整屏出现。 */
+html[data-auth="1"] #app{display:flex}
+html[data-auth="1"] #login{display:none}
 .sidebar{width:228px;background:var(--surface);border-right:1px solid var(--line);display:flex;flex-direction:column;padding:12px 10px;flex:none}
 .side-brand{display:flex;align-items:center;gap:12px;padding:8px 10px 18px}
 .side-brand .logo{width:40px;height:40px;border-radius:11px;background:linear-gradient(135deg,#2196F3,#64B5F6);display:flex;align-items:center;justify-content:center;box-shadow:0 4px 10px rgba(33,150,243,.35)}
@@ -128,6 +132,8 @@ svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.7;stroke
 /* ============ 视图 ============ */
 .view{display:none;animation:vin .28s var(--ease)}
 .view.on{display:block}
+/* 首屏视图不播进入动画（刷新恢复当前页时避免"淡入一下"被看成闪动） */
+.view.no-in{animation:none}
 .view#v-inbox.on{display:flex;flex-direction:column;flex:1;min-height:0}
 .view>*{max-width:1160px;margin-left:auto;margin-right:auto}
 .view#v-inbox>*{max-width:none}
@@ -245,6 +251,11 @@ svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.7;stroke
 .rule-item span{font-size:12px;color:var(--osv);word-break:break-all}
 .rule-item .del{margin-left:auto;color:var(--error);width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center}
 .rule-item .del:hover{background:var(--ec)}
+/* App 专用密码：列表内回显（默认打码，点「显示」才渲染明文） */
+.apw-line{display:flex;align-items:center;gap:4px;margin-top:6px;flex-wrap:wrap}
+.apw-line code{font-family:ui-monospace,monospace;font-size:12.5px;letter-spacing:.5px;background:var(--surface-2);
+  border-radius:6px;padding:3px 8px;color:var(--on-pc);word-break:break-all;user-select:all}
+.apw-line .btn.sm{height:26px;padding:0 8px;font-size:12px}
 .hint{font-size:12px;color:var(--osv2);line-height:1.6}
 
 /* 邮箱管理 */

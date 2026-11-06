@@ -11,11 +11,16 @@ import (
 	"sync"
 	"time"
 	"unicode/utf8"
+
+	"github.com/david88558855/private-email/internal/secrets"
 )
 
 // Store 封装全部持久化操作。
 type Store struct {
 	DB *sql.DB
+	// Enc 用于 App 专用密码的密文存储（见 internal/secrets）。
+	// 为空时只能校验历史 bcrypt 哈希，新令牌无法回显。
+	Enc *secrets.Cipher
 	// OnInsert 在邮件成功落库后回调（用于 IMAP 的 IDLE/NOOP 推送）。
 	// 回调在事务提交之后、无锁状态下执行，允许为空。
 	OnInsert func(folderID int64)

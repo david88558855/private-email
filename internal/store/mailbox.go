@@ -12,10 +12,15 @@ type Mailbox struct {
 }
 
 // MailboxByAddress SMTP RCPT 校验用。
+//
+// 显式 ORDER BY id LIMIT 1：历史库里可能存在仅大小写不同的重复地址
+// （早期版本没做小写归一），不带排序时命中哪一行由 SQLite 决定。
+// 主密码是共用哈希所以看不出差别，但 App 专用密码按邮箱归属校验，
+// 命错行就会表现成「令牌怎么都不对」。
 func (s *Store) MailboxByAddress(addr string) (*Mailbox, error) {
 	m := &Mailbox{}
 	err := s.DB.QueryRow(`SELECT id, user_id, address, domain_id, is_active FROM mailboxes
-		WHERE lower(address)=lower(?) AND is_active=1`, addr).
+		WHERE lower(address)=lower(?) AND is_active=1 ORDER BY id LIMIT 1`, addr).
 		Scan(&m.ID, &m.UserID, &m.Address, &m.DomainID, &m.IsActive)
 	if err == sql.ErrNoRows {
 		return nil, nil

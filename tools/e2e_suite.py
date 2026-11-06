@@ -58,8 +58,8 @@ pw = os.environ.get('PE_PW', 'admin')  # 默认管理员密码
 st, r = http('/auth/login', {'username': 'admin', 'password': 'wrong'}); ok('错误密码拒绝', st == 401)
 st, r = http('/auth/login', {'username': 'admin', 'password': pw}); ok('登录', st == 200 and r.get('token'))
 if st != 200:
-    print('登录失败：服务若用随机初始密码启动，请设置 PE_PW=data/initial_admin.txt 里的值，')
-    print('或在启动服务前设置 PRIVATE_EMAIL_ADMIN_PASSWORD 指定固定初始密码。')
+    print('登录失败：管理员默认口令是 admin；若启动前设了 PRIVATE_EMAIL_ADMIN_PASSWORD，')
+    print('请用同样的值设置 PE_PW。')
     sys.exit(1)
 T = r['token']
 st, r = http('/auth/login', {'username': 'admin', 'password': pw}); T2 = r.get('token', '')

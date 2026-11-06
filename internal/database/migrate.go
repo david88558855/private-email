@@ -219,5 +219,12 @@ ALTER TABLE domains ADD COLUMN verify_token TEXT NOT NULL DEFAULT '';
 CREATE INDEX IF NOT EXISTS idx_mails_folder_uid ON mails(folder_id, msg_uid);
 INSERT OR IGNORE INTO settings(key, value) VALUES('queue_retention_days', '7');
 `,
+		// 005 App 专用密码支持回显：密文列（AES-256-GCM，密钥在 data/keys/app.key）。
+		// 只有 bcrypt 哈希时令牌只能校验、不能再次展示；用户要求「随时可查看」，
+		// 所以新增可解密的密文列。历史行 secret='' 仍可正常登录（走哈希比对），
+		// 只是不能在 Web 上回显，需撤销后重新生成。
+		`
+ALTER TABLE app_passwords ADD COLUMN secret TEXT NOT NULL DEFAULT '';
+`,
 	}...)
 }

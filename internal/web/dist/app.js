@@ -19,7 +19,8 @@ const folderCN = (n) => FOLDER_CN[n] || n;
 // 邮件视图的页头标题：全部邮件 / 收件箱 / 已发送 …
 const inboxTitle = () => (state.folder ? folderCN(state.folderName) : '全部邮件');
 const state = { view: 'dashboard', folder: null, folderName: 'INBOX', mail: null, mails: [], filter: 'all',
-  mailboxes: [], folders: [], mb: null, me: null, q: '', admTab: 'ov', adminConsole: false, loginMode: 'user', adminDomains: [] };
+  mailboxes: [], folders: [], mb: null, me: null, q: '', admTab: 'ov', adminConsole: false, loginMode: 'user',
+  adminDomains: [], apMb: null, listLoading: false };
 
 const VIEWS = {
   dashboard: { title: '仪表板', icon: 'i-dash', group: '工作台' },
@@ -46,7 +47,7 @@ let tT; function toast(s) { const t = $('#toast'); t.textContent = s; t.classLis
 function openDlg(id) { $('#' + id).classList.add('on'); }
 function closeDlg(id) { $('#' + id).classList.remove('on'); }
 function toggleTheme() { const d = document.documentElement.dataset.theme === 'dark'; document.documentElement.dataset.theme = d ? '' : 'dark'; localStorage.setItem('pe_theme', d ? '' : 'dark'); }
-if (localStorage.getItem('pe_theme') === 'dark') document.documentElement.dataset.theme = 'dark';
+// 首帧的主题由 index.html <head> 里的内联脚本设置，这里不再重复（避免二次切换）。
 
 /* ---------- 导航 ---------- */
 function renderNav() {
@@ -74,23 +75,40 @@ function renderNav() {
   renderFolderStrip();
 }
 
-async function showView(v) {
+// 首屏（刷新恢复当前页）不播视图进入动画：动画从 opacity:0 起步，
+// 在界面已经出现之后再看内容淡入，很容易被读成「闪了一下再落到本页」。
+// 之后用户主动切页仍保留 vin 动画。
+let firstPaint = true;
+// applyView 只做「切视图」的 DOM 工作（同步、无网络请求），
+// 抽出来是为了让首屏能在任何 await 之前就把正确的视图摆好。
+function applyView(v) {
   state.view = v;
-  localStorage.setItem('pe_view', v); // 刷新后回到同一页
   if (v === 'admin') {
     state.adminConsole = true;
     state.admTab = localStorage.getItem('pe_adm_tab') || 'ov'; // 刷新后回到上次的子页面
     applyAdmTab();
   }
   $$('.view').forEach((e) => e.classList.remove('on'));
-  $('#v-' + v).classList.add('on');
+  if (!firstPaint) $$('.view').forEach((e) => e.classList.remove('no-in'));
+  const sec = $('#v-' + v);
+  if (!sec) return;
+  // no-in 必须在 .on 之前挂上，同一帧内不会有中间的重绘
+  if (firstPaint) { sec.classList.add('no-in'); firstPaint = false; }
+  sec.classList.add('on');
   $('#viewTitle').textContent = v === 'admin' ? '管理后台' : (v === 'inbox' ? inboxTitle() : VIEWS[v].title);
   document.body.classList.toggle('has-fab', v === 'inbox');
-  renderNav();
+}
+async function loadView(v) {
   const loaders = { dashboard: loadDashboard, inbox: loadInbox, mailboxes: loadMailboxes,
     forward: () => loadRules('forward'), verif: () => loadRules('verif'),
     settings: loadSettings, admin: loadAdmin };
   try { await (loaders[v] || (() => {}))(); } catch (e) { if (e.message !== 'unauthorized') toast(e.error || '加载失败'); }
+}
+async function showView(v) {
+  localStorage.setItem('pe_view', v); // 刷新后回到同一页
+  applyView(v);
+  renderNav();
+  await loadView(v);
 }
 const ADM_TABS = ['ov', 'users', 'domains', 'queue', 'conf'];
 function applyAdmTab() { ADM_TABS.forEach((t) => { const el = $('#a-' + t); if (el) el.style.display = t === state.admTab ? '' : 'none'; }); }
@@ -137,10 +155,28 @@ async function initLogin() {
 }
 
 /* ---------- 启动 ---------- */
-async function boot() {
-  try { state.me = await api.req('/me'); } catch { return showLogin(); }
+// 刷新不闪动的三段式：
+//   1) primeShell()：脚本一开始（任何 await 之前）就按上次的视图把外壳摆好 —— 首帧即正确；
+//   2) boot() 只负责补数据，不再「先显示默认页再切回来」；
+//   3) 外壳从头到尾都在，没有「空白 → 满屏」的弹跳。
+// 之前的两版分别踩了：预置 .on 导致先闪仪表板、以及等三个请求回来才显示外壳导致整页空白后突然出现。
+function primeShell() {
+  const saved = localStorage.getItem('pe_view') || '';
+  const v = VIEWS[saved] ? saved : 'dashboard';
+  const savedFolder = localStorage.getItem('pe_folder') || '';
+  if (v === 'inbox' && savedFolder) state.folderName = savedFolder;
+  applyView(v);
+  // 收件箱的标题依赖「当前文件夹 id」，而 id 要等 /folders 回来才知道。
+  // 这里先用上次的文件夹名把标题定死（'' = 全部邮件），
+  // 否则首帧会先写「全部邮件」、数据回来再改成「收件箱」，页头明显跳一下。
+  if (v === 'inbox') {
+    $('#viewTitle').textContent = savedFolder ? folderCN(savedFolder) : '全部邮件';
+  }
   $('#login').style.display = 'none';
   $('#app').classList.add('on');
+}
+async function boot() {
+  try { state.me = await api.req('/me'); } catch { return showLogin(); }
   const initial = (state.me.username || '?')[0].toUpperCase();
   $('#sideName').textContent = state.me.username;
   $('#sideAvatar').textContent = initial;
@@ -151,7 +187,6 @@ async function boot() {
   if (state.mb) await refreshFolders();
   $('#sideRole').textContent = state.me.role === 'admin' ? '管理员' : '用户工作台';
   $('#sideMail').textContent = state.mb?.address || '';
-  renderNav();
   // 刷新/重开页面回到上次所在页面与文件夹，不强制跳回仪表板
   const lastView = localStorage.getItem('pe_view') || '';
   const lastFolder = localStorage.getItem('pe_folder') || '';
@@ -160,8 +195,17 @@ async function boot() {
     // folderName 必须一起恢复：它决定页头标题，只恢复 id 会出现「标题写收件箱、高亮在垃圾箱」
     if (lf) { state.folder = lf.id; state.folderName = lf.name; }
   }
-  const viewOK = VIEWS[lastView] && !(VIEWS[lastView].adminOnly && state.me.role !== 'admin');
-  showView(viewOK ? lastView : 'dashboard');
+  const want = VIEWS[lastView] && !(VIEWS[lastView].adminOnly && state.me.role !== 'admin')
+    ? lastView : 'dashboard';
+  renderNav();
+  if (want === state.view) {
+    // 视图已由 primeShell 摆好，这里只补数据：不重切类名，避免任何一次重排/动画
+    if (want === 'inbox') $('#viewTitle').textContent = inboxTitle();
+    await loadView(want);
+  } else {
+    // 角色不符（例如上次停在后台但账号已降级为普通用户）才需要真正切一次
+    await showView(want);
+  }
   setInterval(async () => {
     if (state.view === 'inbox' && !state.q && state.folder) { await refreshFolders(); await loadMails(true); }
   }, 8000);
@@ -171,7 +215,13 @@ async function boot() {
   });
 }
 async function refreshFolders() { if (state.mb) state.folders = (await api.req(`/mailboxes/${state.mb.id}/folders`)).items; renderNav(); }
-function showLogin() { $('#app').classList.remove('on'); $('#login').style.display = 'flex'; initLogin(); }
+function showLogin() {
+  $('#app').classList.remove('on');
+  // 清掉 head 里设的首屏登录态标记，否则 CSS 会把外壳继续显示出来
+  document.documentElement.removeAttribute('data-auth');
+  $('#login').style.display = 'flex';
+  initLogin();
+}
 
 /* ---------- 仪表板 ---------- */
 async function loadDashboard() {
@@ -274,6 +324,16 @@ function setFilter(btn, f) { state.filter = f; $$('#segFilter button').forEach((
 let qT; $('#q').addEventListener('input', (e) => { clearTimeout(qT); qT = setTimeout(() => { state.q = e.target.value.trim(); loadMails(); }, 350); });
 
 async function loadMails(silent) {
+  state.listLoading = true;
+  try {
+    await fetchMails();
+  } finally {
+    state.listLoading = false;
+    renderList();
+    if (!silent) renderReader();
+  }
+}
+async function fetchMails() {
   if (!state.folder) {
     // 全部邮件：合并该邮箱所有文件夹
     const rs = await Promise.all(state.folders.map((f) =>
@@ -283,19 +343,21 @@ async function loadMails(silent) {
     if (state.filter === 'unread') items = items.filter((m) => !m.flags.includes('\\Seen'));
     state.mails = items.slice(0, 50);
     $('#listMeta').textContent = `共 ${items.length} 封`;
-    renderList(); if (!silent) renderReader();
     return;
   }
   const p = state.q ? `?q=${encodeURIComponent(state.q)}&limit=50` : '?limit=50';
   const r = await api.req(`/folders/${state.folder}/mails${p}`);
   state.mails = state.filter === 'unread' ? r.items.filter((m) => !m.flags.includes('\\Seen')) : r.items;
   $('#listMeta').textContent = `共 ${r.total} 封`;
-  renderList();
-  if (!silent) renderReader();
 }
 function renderList() {
   const box = $('#mailList');
-  if (!state.mails.length) { box.innerHTML = '<div class="empty"><svg><use href="#i-mail"/></svg>暂无邮件</div>'; return; }
+  if (!state.mails.length) {
+    // 首次加载还没回来时不要先画「暂无邮件」再被列表顶掉：
+    // 空白列表区 → 列表，看起来像布局跳动；留空更稳。
+    box.innerHTML = state.listLoading ? '' : '<div class="empty"><svg><use href="#i-mail"/></svg>暂无邮件</div>';
+    return;
+  }
   box.innerHTML = state.mails.map((m) => `
     <div class="m-item ${state.mail?.id === m.id ? 'on' : ''} ${m.flags.includes('\\Seen') ? '' : 'unread'}" onclick="openMail(${m.id})">
       <div class="r1"><span class="from">${esc(m.sender)}</span><span class="time">${fmtTime(m.created_at)}</span></div>
@@ -486,20 +548,73 @@ $('#fwMbx')?.addEventListener('change', () => loadRules('forward'));
 $('#vfMbx')?.addEventListener('change', () => loadRules('verif'));
 
 /* ---------- 账号设置 ---------- */
+// 令牌明文只放内存：列表默认打码，点「显示」才渲染出来，避免肩窥/截图泄露。
+let apwCache = {};
+// 当前正在查看/生成令牌的邮箱（与收件箱的默认邮箱解耦，
+// 避免「在默认邮箱下生成、却拿另一个地址配客户端」的误配）
+function apMbId() {
+  if (state.apMb && state.mailboxes.some((m) => m.id === state.apMb)) return state.apMb;
+  return state.mb ? state.mb.id : null;
+}
 async function loadSettings() {
   // 没有邮箱时 state.mb 是 null，取 .id 会抛异常，页面只弹「加载失败」
   if (!state.mb) {
+    $('#apMbx').innerHTML = '';
     $('#apList').innerHTML = '<p class="hint">还没有邮箱，请先在「邮箱管理」创建一个</p>';
     return;
   }
-  const items = (await api.req(`/mailboxes/${state.mb.id}/app_passwords`)).items;
+  // 归属邮箱选择器：令牌与邮箱一对一，必须让用户看清当前是哪个地址
+  const sel = $('#apMbx');
+  const sig = state.mailboxes.map((m) => m.id + ':' + m.address).join('|');
+  if (sel && sel.dataset.sig !== sig) {
+    sel.dataset.sig = sig;
+    sel.innerHTML = state.mailboxes.map((m) => `<option value="${m.id}">${esc(m.address)}</option>`).join('');
+  }
+  const mbId = apMbId();
+  if (sel) {
+    sel.value = String(mbId);
+    sel.onchange = () => { state.apMb = +sel.value; loadSettings(); };
+  }
+  const cur = state.mailboxes.find((m) => m.id === mbId);
+  const items = (await api.req(`/mailboxes/${mbId}/app_passwords`)).items;
+  apwCache = {};
+  for (const a of items) if (a.password) apwCache[a.id] = a.password;
   $('#apList').innerHTML = items.length ? items.map((a) => `
     <div class="rule-item">
       <div class="ic"><svg><use href="#i-key"/></svg></div>
-      <div style="flex:1"><b>${esc(a.label)}</b><span>创建于 ${esc(a.created_at.slice(0, 10))}${a.last_used ? ' · 最近使用 ' + esc(a.last_used.slice(0, 16)) : ' · 从未使用'}</span></div>
+      <div style="flex:1;min-width:0"><b>${esc(a.label)}</b>
+        <span>${esc(a.mailbox || (cur ? cur.address : ''))} · 创建于 ${esc(a.created_at.slice(0, 10))}${a.last_used ? ' · 最近使用 ' + esc(a.last_used.slice(0, 16)) : ' · 从未使用'}</span>
+        ${a.password ? `<div class="apw-line">
+          <code id="apwv-${a.id}">${'•'.repeat(a.password.length)}</code>
+          <button class="btn text sm" id="apwt-${a.id}" onclick="toggleApw(${a.id})">显示</button>
+          <button class="btn text sm" onclick="copyApwById(${a.id})">复制</button>
+        </div>` : '<div class="apw-line"><span class="hint">旧记录不可回显，撤销后重新生成即可查看</span></div>'}
+      </div>
       <button class="del" onclick="delApw(${a.id})"><svg><use href="#i-del"/></svg></button>
-    </div>`).join('') : '<p class="hint">暂无 App 专用密码</p>';
+    </div>`).join('') : '<p class="hint">这个邮箱还没有 App 专用密码</p>';
 }
+function toggleApw(id) {
+  const el = $('#apwv-' + id), btn = $('#apwt-' + id);
+  if (!el || !apwCache[id]) return;
+  const shown = el.dataset.shown === '1';
+  el.textContent = shown ? '•'.repeat(apwCache[id].length) : apwCache[id];
+  el.dataset.shown = shown ? '0' : '1';
+  if (btn) btn.textContent = shown ? '显示' : '隐藏';
+}
+function copyText(v, okMsg) {
+  if (!v) return;
+  if (navigator.clipboard?.writeText) {
+    navigator.clipboard.writeText(v).then(() => toast(okMsg)).catch(() => toast('复制失败，请手动选择'));
+  } else {
+    // 非安全上下文（http + 局域网 IP）下没有 clipboard API，退回选区+CtrlC
+    const t = document.createElement('textarea');
+    t.value = v; t.style.position = 'fixed'; t.style.opacity = '0';
+    document.body.appendChild(t); t.select();
+    try { document.execCommand('copy'); toast(okMsg); } catch { toast('复制失败，请手动选择'); }
+    t.remove();
+  }
+}
+function copyApwById(id) { copyText(apwCache[id], '独立密码已复制'); }
 async function savePassword() {
   try {
     await api.req('/me/password', { method: 'POST', body: JSON.stringify({ old: $('#pwOld').value, new: $('#pwNew').value }) });
@@ -508,25 +623,23 @@ async function savePassword() {
   } catch (e) { toast(e.error || '修改失败'); }
 }
 async function genApw() {
+  const mbId = apMbId();
+  if (!mbId) { toast('还没有邮箱，请先在「邮箱管理」创建一个'); return; }
   try {
-    const r = await api.req(`/mailboxes/${state.mb.id}/app_passwords`, { method: 'POST', body: JSON.stringify({ label: $('#apLabel').value.trim() || '客户端' }) });
+    const r = await api.req(`/mailboxes/${mbId}/app_passwords`, { method: 'POST', body: JSON.stringify({ label: $('#apLabel').value.trim() || '客户端' }) });
     $('#apLabel').value = '';
-    $('#apwValue').textContent = r.password; openDlg('apwDlg'); loadSettings();
+    const mb = state.mailboxes.find((m) => m.id === mbId);
+    $('#apwValue').textContent = r.password;
+    $('#apwFor').textContent = mb ? mb.address : '';
+    openDlg('apwDlg'); loadSettings();
   } catch (e) { toast(e.error || '生成失败'); }
 }
 async function delApw(id) {
-  await api.req(`/mailboxes/${state.mb.id}/app_passwords?pid=${id}`, { method: 'DELETE' });
+  await api.req(`/mailboxes/${apMbId()}/app_passwords?pid=${id}`, { method: 'DELETE' });
   toast('已撤销'); loadSettings();
 }
 function copyApw() {
-  const v = $('#apwValue').textContent;
-  if (navigator.clipboard?.writeText) {
-    navigator.clipboard.writeText(v).then(() => toast('已复制并关闭')).catch(() => toast('复制失败，请手动选择'));
-  } else {
-    const r = document.createRange(); r.selectNodeContents($('#apwValue'));
-    const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r);
-    toast('已选中，请按 Ctrl+C 复制');
-  }
+  copyText($('#apwValue').textContent, '已复制并关闭');
   closeDlg('apwDlg');
 }
 $('#apwDlg')?.addEventListener('click', (e) => { if (e.target.id === 'apwDlg') closeDlg('apwDlg'); });
@@ -664,7 +777,8 @@ async function addDomain() {
 }
 
 /* ---------- 入口 ---------- */
-if (api.token) boot(); else showLogin();
+// 有 token 就先把外壳按上次的视图摆好（同步、首帧即正确），再去补数据。
+if (api.token) { primeShell(); boot(); } else showLogin();
 
 /* ---------- DKIM 详情弹窗 ---------- */
 async function showDkim(id) {

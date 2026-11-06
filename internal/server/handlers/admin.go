@@ -12,7 +12,6 @@ import (
 	"github.com/david88558855/private-email/internal/config"
 	"github.com/david88558855/private-email/internal/outbound"
 	"github.com/david88558855/private-email/internal/server/middleware"
-	"github.com/david88558855/private-email/internal/store"
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/bcrypt"
@@ -416,6 +415,11 @@ func (h *MailHandler) Register(c *gin.Context) {
 }
 
 // AppPasswords GET/POST/DELETE /api/v1/mailboxes/:id/app_passwords（D2）
+//
+// App 专用密码与邮箱是**一对一**的：认证侧严格按 mailbox_id 匹配
+// （store.appPasswords），A 邮箱的令牌登不了同账号的 B 邮箱。
+// 因此这里 GET/POST/DELETE 全部以 :id 这个邮箱为单位，
+// 界面上也必须把「令牌属于哪个邮箱」显示出来。
 func (h *MailHandler) AppPasswords(c *gin.Context) {
 	uid := c.GetInt64("user_id")
 	mbID, _ := strconv.ParseInt(c.Param("id"), 10, 64)
@@ -432,10 +436,6 @@ func (h *MailHandler) AppPasswords(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
 			return
 		}
-		if h.Store.AppPasswordCount(mbID) >= store.MaxAppPasswords {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "App 专用密码最多 5 个，请先撤销不用的"})
-			return
-		}
 		pwd, err := randCode(20)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "生成失败"})
@@ -446,8 +446,17 @@ func (h *MailHandler) AppPasswords(c *gin.Context) {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "生成失败"})
 			return
 		}
-		if _, err := h.Store.DB.Exec(`INSERT INTO app_passwords(mailbox_id, label, password_hash) VALUES(?,?,?)`,
-			mbID, req.Label, string(hash)); err != nil {
+		// 密文用于「随时查看」；哈希保留给未升级的旧库/旧代码路径比对。
+		// 加密器缺失（未配置密钥）时降级为只存哈希：令牌仍能登录，只是不能回显。
+		secret := ""
+		if h.Store.Enc != nil {
+			if secret, err = h.Store.Enc.Encrypt(pwd); err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "生成失败"})
+				return
+			}
+		}
+		if _, err := h.Store.DB.Exec(`INSERT INTO app_passwords(mailbox_id, label, password_hash, secret) VALUES(?,?,?,?)`,
+			mbID, req.Label, string(hash), secret); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "保存失败"})
 			return
 		}
@@ -457,8 +466,9 @@ func (h *MailHandler) AppPasswords(c *gin.Context) {
 		h.Store.DB.Exec(`DELETE FROM app_passwords WHERE id=? AND mailbox_id=?`, id, mbID)
 		c.JSON(http.StatusOK, gin.H{"ok": true})
 	default:
-		rows, err := h.Store.DB.Query(`SELECT id, label, COALESCE(last_used,''), created_at
-			FROM app_passwords WHERE mailbox_id=?`, mbID)
+		rows, err := h.Store.DB.Query(`SELECT ap.id, ap.label, COALESCE(ap.last_used,''), ap.created_at,
+			m.address, ap.secret FROM app_passwords ap JOIN mailboxes m ON m.id = ap.mailbox_id
+			WHERE ap.mailbox_id=? ORDER BY ap.id DESC`, mbID)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "服务异常"})
 			return
@@ -467,9 +477,20 @@ func (h *MailHandler) AppPasswords(c *gin.Context) {
 		items := []map[string]any{}
 		for rows.Next() {
 			var id int64
-			var label, lastUsed, created string
-			rows.Scan(&id, &label, &lastUsed, &created)
-			items = append(items, map[string]any{"id": id, "label": label, "last_used": lastUsed, "created_at": created})
+			var label, lastUsed, created, mailbox, secret string
+			rows.Scan(&id, &label, &lastUsed, &created, &mailbox, &secret)
+			// 解密失败（密钥丢失/历史数据）时 password 为空，前端会提示「不可查看」，
+			// 绝不能让整张列表 500。
+			pwd := ""
+			if h.Store.Enc != nil {
+				if v, derr := h.Store.Enc.Decrypt(secret); derr != nil {
+					log.Printf("app_passwords 解密失败 id=%d: %v", id, derr)
+				} else {
+					pwd = v
+				}
+			}
+			items = append(items, map[string]any{"id": id, "label": label, "last_used": lastUsed,
+				"created_at": created, "mailbox": mailbox, "password": pwd, "viewable": pwd != ""})
 		}
 		c.JSON(http.StatusOK, gin.H{"items": items})
 	}

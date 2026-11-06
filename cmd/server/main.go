@@ -27,6 +27,7 @@ import (
 	"github.com/david88558855/private-email/internal/proto/pop3"
 	"github.com/david88558855/private-email/internal/proto/smtp"
 	"github.com/david88558855/private-email/internal/server"
+	"github.com/david88558855/private-email/internal/secrets"
 	"github.com/david88558855/private-email/internal/store"
 	"github.com/david88558855/private-email/internal/tlsutil"
 	"golang.org/x/crypto/bcrypt"
@@ -93,9 +94,16 @@ func main() {
 	if err := database.Migrate(db); err != nil {
 		log.Fatalf("数据库迁移失败: %v", err)
 	}
-	bootstrapAdmin(db, dataDir)
+	bootstrapAdmin(db)
 
 	st := &store.Store{DB: db}
+	// App 专用密码要支持 Web 回显，必须可逆存储：密钥单独放在 data/keys/app.key。
+	// 密钥文件损坏时直接退出，避免静默重建导致历史令牌集体失效。
+	enc, err := secrets.LoadOrCreate(filepath.Join(dataDir, "keys"))
+	if err != nil {
+		log.Fatalf("App 专用密码密钥初始化失败: %v", err)
+	}
+	st.Enc = enc
 	st.Bootstrap()
 	// 大库回填全文索引可能耗时几分钟，不能阻塞服务启动；
 	// 后台 goroutine 的 panic 必须留痕，否则全文检索静默残缺。
@@ -185,10 +193,19 @@ func main() {
 	log.Println("已退出")
 }
 
+// defaultAdminPassword 首次启动时的默认管理员密码。
+//
+// 固定为 admin：部署后可以直接登录，不用再去数据目录翻初始密码文件。
+// 代价是「谁先访问谁就能用 admin/admin 进去」，所以启动日志会显式警告，
+// 首次登录后必须改密（改密会同步该用户所有邮箱的协议密码）。
+// 需要脱离这个默认值时用 PRIVATE_EMAIL_ADMIN_PASSWORD 覆盖。
+const defaultAdminPassword = "admin"
+
 // bootstrapAdmin 首次启动创建 admin 账号。
-// 初始密码默认随机生成，只写进 0600 的 data/initial_admin.txt 并在日志打印一次；
-// 自动化部署可用 PRIVATE_EMAIL_ADMIN_PASSWORD 显式指定（此时日志不回显密码）。
-func bootstrapAdmin(db *sql.DB, dataDir string) {
+//
+// 不再生成随机口令、也不再写 data/initial_admin.txt：默认口令是固定的
+// defaultAdminPassword，自动化部署可用 PRIVATE_EMAIL_ADMIN_PASSWORD 覆盖。
+func bootstrapAdmin(db *sql.DB) {
 	var n int
 	if err := db.QueryRow(`SELECT COUNT(*) FROM users`).Scan(&n); err != nil {
 		log.Fatalf("检查管理员账号失败: %v", err)
@@ -199,7 +216,7 @@ func bootstrapAdmin(db *sql.DB, dataDir string) {
 	fromEnv := os.Getenv("PRIVATE_EMAIL_ADMIN_PASSWORD") != ""
 	pw := os.Getenv("PRIVATE_EMAIL_ADMIN_PASSWORD")
 	if pw == "" {
-		pw = config.RandToken(20)
+		pw = defaultAdminPassword
 	}
 	if len(pw) > 72 {
 		log.Fatalf("初始管理员密码超过 72 字节，bcrypt 无法处理（请缩短 PRIVATE_EMAIL_ADMIN_PASSWORD）")
@@ -208,27 +225,17 @@ func bootstrapAdmin(db *sql.DB, dataDir string) {
 	if err != nil {
 		log.Fatalf("生成管理员密码哈希失败: %v", err)
 	}
-	// 先落盘再建号：写盘失败就必须终止，否则账号已建而密码无人知晓，
-	// 重启时 n>0 会跳过 bootstrap，实例永久锁死。
-	// 环境变量模式不落盘，秘密只留在环境变量里。
-	p := filepath.Join(dataDir, "initial_admin.txt")
-	if !fromEnv {
-		if err := os.WriteFile(p, []byte("admin / "+pw+"\n"), 0o600); err != nil {
-			log.Fatalf("写入初始管理员密码失败 %s: %v", p, err)
-		}
-		if err := os.Chmod(p, 0o600); err != nil {
-			log.Fatalf("设置初始管理员密码文件权限失败 %s: %v", p, err)
-		}
-	}
 	if _, err := db.Exec(`INSERT INTO users(username, password, role) VALUES('admin', ?, 'admin')`, string(hash)); err != nil {
 		log.Fatalf("创建管理员失败: %v", err)
 	}
 	if fromEnv {
-		log.Printf("首次启动：管理员 admin 已创建，初始密码由环境变量指定（未落盘，请登录后立即修改）")
-	} else {
-		log.Printf("首次启动：管理员 admin，初始密码 %s，已保存到 %s（请登录后立即修改）", pw, p)
+		log.Printf("首次启动：管理员 admin 已创建，初始密码由环境变量指定（请登录后立即修改）")
+		return
 	}
+	log.Printf("首次启动：管理员 admin 已创建，初始密码为默认值 %q", defaultAdminPassword)
+	log.Printf("警告：默认口令等于公开信息，请立即登录 Web 后台修改（改密会自动同步 IMAP/SMTP/POP3 密码）")
 }
+
 
 // probeListenAddrs 启动前实际 bind 一次每个非空监听地址。
 // 各协议 Serve 对 net.Listen 失败只打印「跳过」继续跑：端口被占用或多实例误启动时

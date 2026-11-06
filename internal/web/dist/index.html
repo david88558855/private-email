@@ -4,6 +4,17 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Private Email</title>
+<script>
+/* 首帧之前只做两件不需要 DOM 的事：
+   1) 主题：放到 app.js 里会在「浅色已绘制」之后再切深色，配合 body 的
+      background/color 过渡，每次刷新都会看到明显的明暗闪动；
+   2) 登录态：让 CSS 能在外壳（#app）还没被 JS 接管时就把它显示出来，
+      否则刷新会先闪一帧空白页，再整屏出现。 */
+try {
+  if (localStorage.getItem('pe_theme') === 'dark') document.documentElement.dataset.theme = 'dark';
+  if (localStorage.getItem('pe_token')) document.documentElement.dataset.auth = '1';
+} catch (e) {}
+</script>
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -64,7 +75,7 @@
         <a href="javascript:void 0" id="lgForgot" onclick="toast('请联系管理员重置密码')">忘记密码？</a>
       </div>
       <button class="btn text" id="lgBack" style="display:none" onclick="setMode('user')">← 返回登录</button>
-      <div class="login-tip">首次启动的初始管理员密码见数据目录 <b>initial_admin.txt</b>，登录后请立即修改</div>
+      <div class="login-tip">默认管理员 <b>admin</b> / 初始密码 <b>admin</b>，首次登录后请立即修改</div>
     </div>
   </div>
 </div>
@@ -78,7 +89,7 @@
     </div>
     <nav id="sideNav"></nav>
     <div class="side-foot">
-      <div class="avatar" id="sideAvatar">?</div>
+      <div class="avatar" id="sideAvatar"></div>
       <div class="who"><b id="sideName"></b><span id="sideMail"></span></div>
       <button class="iconbtn" title="退出登录" onclick="logout()"><svg><use href="#i-out"/></svg></button>
     </div>
@@ -94,7 +105,9 @@
     <main class="content"><div class="wrap">
 
       <!-- ===== 仪表板 ===== -->
-      <section class="view on" id="v-dashboard">
+      <!-- 不预设 .on：视图由 app.js 在显示外壳之前按 localStorage 决定，
+           写死 .on 会让每次刷新先闪一帧仪表板再跳到上次的页面 -->
+      <section class="view" id="v-dashboard">
         <div class="greet" id="greet"></div>
         <div class="greet-sub" id="greetSub"></div>
         <div class="stat-grid">
@@ -191,9 +204,10 @@
           </div>
           <div class="panel">
             <h4 style="margin-bottom:6px">App 专用密码</h4>
-            <p class="hint" style="margin-bottom:14px">为第三方客户端生成独立密码，与主密码互不影响，可随时撤销。</p>
+            <p class="hint" style="margin-bottom:14px">为第三方客户端生成独立密码，与主密码互不影响，可随时撤销、<b>随时查看</b>。<b>一份密码只属于一个邮箱</b>：客户端的用户名必须填下面选中的那个地址，否则登录会失败。</p>
             <div class="row" style="margin-bottom:6px">
-              <div class="field" style="flex:1;min-width:220px"><label>用途备注</label><input id="apLabel" placeholder="Thunderbird"></div>
+              <div class="field" style="min-width:240px"><label>归属邮箱</label><select id="apMbx"></select></div>
+              <div class="field" style="flex:1;min-width:200px"><label>用途备注</label><input id="apLabel" placeholder="Thunderbird"></div>
               <button class="btn tonal" onclick="genApw()">生成</button>
             </div>
             <div class="rule-list" id="apList"></div>
@@ -293,7 +307,7 @@
   <div class="dlg" style="width:440px">
     <div class="hd"><h3>App 专用密码已生成</h3><button class="iconbtn x" onclick="closeDlg('apwDlg')"><svg><use href="#i-del"/></svg></button></div>
     <div class="bd">
-      <p class="hint">仅此一次展示，请立即复制到客户端：</p>
+      <p class="hint">已生成，之后可随时在本页「App 专用密码」列表里查看或复制。客户端用户名请填：<b id="apwFor"></b>（密码只对这个地址有效）</p>
       <div class="apw-box" id="apwValue"></div>
     </div>
     <div class="ft"><button class="btn filled" onclick="copyApw()">复制并关闭</button></div>

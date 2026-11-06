@@ -19,8 +19,8 @@ HOST = '127.0.0.1'
 P = dict(http=19180, smtp=22525, submission=22587, smtps=29465,
          imap=22143, imaps=29943, pop3=22110, pop3s=29955)
 BASE = f'http://{HOST}:{P["http"]}/api/v1'
-# 套件自启实例用固定的初始口令，避免每次构建都读随机生成的 initial_admin.txt。
-# 生产部署不要设置该环境变量，程序会生成随机口令并写入 0600 的 initial_admin.txt。
+# 套件自启实例用固定的初始口令（与默认值一致，写出来只是显式化）：
+# 默认管理员口令本身就是 admin，服务不会再生成 initial_admin.txt。
 CHILD_ENV = dict(os.environ, PRIVATE_EMAIL_ADMIN_PASSWORD='admin')
 # 每次运行生成一次测试密钥并在所有场景间保持稳定，避免重启导致 JWT 失效；
 # 不硬编码固定串，防止模板被误抄到生产。
@@ -302,6 +302,21 @@ def main():
             plaintext_allowed_group('A', MBOX, TOKEN, 'admin')
             tls_group('A', MBOX, TOKEN)
             rejected('A 错误令牌被拒', lambda: smtp_auth(MBOX, 'wrong-token-value'))
+
+            # ---------- 令牌与邮箱一对一 / 随时可回显 ----------
+            # 回归点：一份令牌只属于生成它的邮箱。拿它去登同账号的另一个地址必须失败，
+            # 否则等于「一个客户端的凭据能开全部信箱」。主密码则是账号口令，仍能登。
+            _, mb2 = http('/mailboxes', {'prefix': 'suite2nd', 'domain_id': dom['id']},
+                          token=T, method='POST')
+            MBOX2 = mb2.get('address', '')
+            ok('A 同账号第二个邮箱创建成功', bool(MBOX2), str(mb2))
+            rejected('A 独立令牌不得用于同账号另一邮箱（IMAP）', lambda: imap_login(MBOX2, TOKEN))
+            rejected('A 独立令牌不得用于同账号另一邮箱（SMTP）', lambda: smtp_auth(MBOX2, TOKEN))
+            accepted('A 同账号另一邮箱主密码仍可用（回归保护）', lambda: imap_login(MBOX2, 'admin'))
+            accepted('A 独立令牌可用于颁发它的邮箱（回归保护）', lambda: imap_login(MBOX, TOKEN))
+            _, lst = http(f'/mailboxes/{MBID}/app_passwords', token=T)
+            ok('A 独立令牌可随时回看（列表回显明文）',
+               any(x.get('password') == TOKEN for x in lst['items']), str(lst)[:200])
 
             # ---------- 撤销令牌 / 审计 ----------
             _, used = http(f'/mailboxes/{MBID}/app_passwords', token=T)
