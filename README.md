@@ -96,18 +96,6 @@ DNS 记录（假设域名 `example.com`、服务器 `mail.example.com`）：
 | TXT | `default._domainkey.example.com` | 管理后台「域名」页展示的完整值 |
 | TXT | `_dmarc.example.com` | `v=DMARC1; p=quarantine`（可选） |
 
-Docker：
-
-```bash
-docker build -t private-email .
-# 镜像以 uid 10001 运行，宿主 data 目录必须先授权，否则写 config.yaml 会失败并拒绝启动
-mkdir -p data && sudo chown 10001:10001 data
-docker run -d --name mail \
-  -p 9000:9000 -p 25:25 -p 587:587 -p 465:465 \
-  -p 143:143 -p 993:993 -p 110:110 -p 995:995 \
-  -v $PWD/data:/app/data private-email
-```
-
 ---
 
 ## 端口
@@ -201,7 +189,7 @@ make build VERSION=v2.2.0
 ./dist/private-email-win-x64.exe -version   # → private-email v2.2.0
 ```
 
-交叉编译无需 CGO（SQLite 用纯 Go 实现），Dockerfile 内也是同一套参数。
+交叉编译无需 CGO（SQLite 用纯 Go 实现），Linux / Windows 产物使用同一套参数。
 
 ---
 
